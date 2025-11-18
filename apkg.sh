@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # apkg - unified package manager frontend
-# Supports: apt/apt-get, pacman(+yay), dnf, yum, zypper, apk (Alpine),
+# Supports: apt/apt-get, pacman(+yay/AUR), dnf, yum, zypper, apk (Alpine),
 #           xbps (Void), emerge (Gentoo)
 
 set -euo pipefail
 
-APKG_VERSION="0.3.0"
+APKG_VERSION="0.3.3"
 
 # ------------- logging helpers -------------
 
@@ -18,7 +18,6 @@ die()  { printf '[apkg][ERROR] %s\n' "$*" >&2; exit 1; }
 SUDO=""
 
 init_sudo() {
-  # Allow overriding sudo via env (APKG_SUDO="").
   if [[ "${APKG_SUDO-}" != "" ]]; then
     if [[ "${APKG_SUDO}" == "" ]]; then
       SUDO=""
@@ -44,7 +43,6 @@ init_sudo() {
       fi
     fi
   else
-    # Auto-detect
     if [[ ${EUID} -eq 0 ]]; then
       SUDO=""
     else
@@ -72,7 +70,6 @@ detect_pkg_mgr() {
     PKG_MGR="pacman"
     PKG_MGR_FAMILY="arch"
   elif command -v apt-get >/dev/null 2>&1 || command -v apt >/dev/null 2>&1; then
-    # force apt-get usage
     PKG_MGR="apt-get"
     PKG_MGR_FAMILY="debian"
   elif command -v dnf >/dev/null 2>&1; then
@@ -160,76 +157,130 @@ Environment:
 EOF
 }
 
-# ------------- helpers for package errors -------------
+# ------------- helpers -------------
 
 print_pkg_not_found_msgs() {
-  # $@ = pkgs
   for p in "$@"; do
     printf 'apkg: The Package "%s" Not Found\n' "$p" >&2
   done
 }
 
-# ------------- Arch: pacman + yay fallback -------------
+# تأكيد عام لكل العمليات الخطيرة
+apkg_confirm() {
+  local msg="$1"
+  local ans
+  read -r -p "apkg: ${msg} [y/N]: " ans
+  case "$ans" in
+    y|Y|yes|YES)
+      return 0
+      ;;
+    *)
+      echo "apkg: Operation cancelled."
+      return 1
+      ;;
+  esac
+}
+
+# شغّل الكوماند، اعرض اللوجات live، وارجّعها في متغير
+run_and_capture() {
+  local __var="$1"; shift
+  local __tmp
+  __tmp="$(mktemp /tmp/apkg-log.XXXXXX)"
+
+  local __status=0
+
+  set +e
+  "$@" 2>&1 | tee "$__tmp"
+  __status=$?
+  set -e
+
+  local __data=""
+  if [[ -s "$__tmp" ]]; then
+    __data="$(cat "$__tmp")"
+  fi
+  rm -f "$__tmp"
+
+  printf -v "$__var" '%s' "$__data"
+  return "$__status"
+}
+
+# ------------- Arch: pacman + yay (مع AUR) -------------
 
 install_yay_if_needed() {
   if command -v yay >/dev/null 2>&1; then
     return 0
   fi
 
-  log "Trying to install 'yay' (AUR helper)..."
-
-  # طريقة بسيطة وآمنة نسبياً: لو yay موجود في الريبو الرسمي
-  if pacman -Si yay >/dev/null 2>&1; then
-    if ! yay_out="$(${SUDO} pacman -S --needed yay 2>&1)"; then
-      warn "Failed to install yay via pacman:"
-      printf '%s\n' "$yay_out" >&2
-      return 1
-    fi
-    printf '%s\n' "$yay_out"
-    return 0
+  if [[ ${EUID} -eq 0 ]]; then
+    warn "Running as root; refusing to bootstrap yay from AUR as root."
+    warn "Use a normal user to install yay, then run apkg from that user."
+    return 1
   fi
 
-  warn "'yay' is not available in official repos."
-  warn "Automatic AUR bootstrap (git/makepkg) not implemented for safety."
-  return 1
+  log "Bootstrapping 'yay' from AUR..."
+
+  if ! command -v git >/dev/null 2>&1 || ! command -v makepkg >/dev/null 2>&1; then
+    log "Installing 'base-devel' and 'git' via pacman before building yay..."
+    if ! ${SUDO} pacman -S --needed --noconfirm base-devel git; then
+      warn "Failed to install base-devel/git needed for building yay."
+      return 1
+    fi
+  fi
+
+  local tmpdir
+  tmpdir="$(mktemp -d /tmp/apkg-yay-XXXXXX)"
+
+  if ! git clone --depth=1 https://aur.archlinux.org/yay.git "$tmpdir" >/dev/null 2>&1; then
+    warn "Failed to clone yay AUR repository."
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  if ! (cd "$tmpdir" && makepkg -si --noconfirm); then
+    warn "Failed to build/install yay via makepkg."
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  rm -rf "$tmpdir"
+  log "'yay' installed successfully."
+  return 0
 }
 
 arch_install_with_yay() {
   local pkgs=("$@")
   local out
 
-  # أولاً جرّب pacman
-  if out="$(${SUDO} pacman -S --needed "${pkgs[@]}" 2>&1)"; then
-    printf '%s\n' "$out"
+  # جرّب pacman أولاً
+  if run_and_capture out ${SUDO} pacman -S --needed --noconfirm "${pkgs[@]}"; then
     return 0
   fi
 
-  # لو الخطأ أن التارجت مش موجود → جرّب yay
+  # لو البكج مش موجود في الرسمي
   if grep -qiE 'target not found|could not find|no such package' <<< "$out"; then
     log "Some packages not found in official repos, trying yay (AUR)..."
 
-    if ! install_yay_if_needed; then
-      print_pkg_not_found_msgs "${pkgs[@]}"
-      return 1
-    fi
-
-    if yay_out="$(yay -S --needed "${pkgs[@]}" 2>&1)"; then
-      printf '%s\n' "$yay_out"
-      return 0
-    else
-      if grep -qiE 'not found|could not find|no such package' <<< "$yay_out"; then
-        print_pkg_not_found_msgs "${pkgs[@]}"
+    if install_yay_if_needed; then
+      local yay_out=""
+      if run_and_capture yay_out yay -S --needed --noconfirm "${pkgs[@]}"; then
+        return 0
+      else
+        if grep -qiE 'not found|could not find|no such package' <<< "$yay_out"; then
+          print_pkg_not_found_msgs "${pkgs[@]}"
+          return 1
+        fi
+        warn "Error while installing via yay."
         return 1
       fi
-      warn "Error while installing via yay:"
-      printf '%s\n' "$yay_out" >&2
+    else
+      warn "Could not use yay (AUR) automatically. Package may exist only in AUR."
+      print_pkg_not_found_msgs "${pkgs[@]}"
       return 1
     fi
   fi
 
-  # أي خطأ آخر من pacman
-  warn "Error while installing via pacman:"
-  printf '%s\n' "$out" >&2
+  # أي خطأ تاني من pacman
+  warn "Error while installing via pacman."
   return 1
 }
 
@@ -237,12 +288,16 @@ arch_install_with_yay() {
 
 cmd_update() {
   ensure_pkg_mgr
+  if ! apkg_confirm "Update package database now?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} update
       ;;
     arch)
-      ${SUDO} pacman -Sy
+      ${SUDO} pacman -Sy --noconfirm
       ;;
     redhat)
       ${SUDO} ${PKG_MGR} makecache
@@ -251,7 +306,7 @@ cmd_update() {
       ${SUDO} zypper refresh
       ;;
     alpine)
-      ${SUDO} apk update
+      ${SUDO} apk --no-interactive update
       ;;
     void)
       ${SUDO} xbps-install -S
@@ -264,12 +319,16 @@ cmd_update() {
 
 cmd_upgrade() {
   ensure_pkg_mgr
+  if ! apkg_confirm "Upgrade installed packages now?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} upgrade -y
       ;;
     arch)
-      ${SUDO} pacman -Su
+      ${SUDO} pacman -Su --noconfirm
       ;;
     redhat)
       ${SUDO} ${PKG_MGR} upgrade -y
@@ -278,7 +337,7 @@ cmd_upgrade() {
       ${SUDO} zypper update -y
       ;;
     alpine)
-      ${SUDO} apk upgrade
+      ${SUDO} apk --no-interactive upgrade
       ;;
     void)
       ${SUDO} xbps-install -Su
@@ -291,12 +350,16 @@ cmd_upgrade() {
 
 cmd_full_upgrade() {
   ensure_pkg_mgr
+  if ! apkg_confirm "Perform a full system upgrade?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} dist-upgrade -y
       ;;
     arch)
-      ${SUDO} pacman -Syu
+      ${SUDO} pacman -Syu --noconfirm
       ;;
     redhat)
       ${SUDO} ${PKG_MGR} upgrade -y
@@ -305,8 +368,8 @@ cmd_full_upgrade() {
       ${SUDO} zypper dist-upgrade -y || ${SUDO} zypper dup -y
       ;;
     alpine)
-      ${SUDO} apk update
-      ${SUDO} apk upgrade
+      ${SUDO} apk --no-interactive update
+      ${SUDO} apk --no-interactive upgrade
       ;;
     void)
       ${SUDO} xbps-install -Su
@@ -323,84 +386,94 @@ cmd_install() {
     die "You must specify at least one package to install."
   fi
 
+  if ! apkg_confirm "Install packages: $* ?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     arch)
       arch_install_with_yay "$@"
       ;;
+
     debian)
-      if out="$(${SUDO} ${PKG_MGR} install -y "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out ${SUDO} ${PKG_MGR} install -y "$@"; then
+        return 0
       else
         if grep -qi 'Unable to locate package' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Install failed:"
-          printf '%s\n' "$out" >&2
+          warn "Install failed."
         fi
         return 1
       fi
       ;;
+
     redhat)
-      if out="$(${SUDO} ${PKG_MGR} install -y "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out ${SUDO} ${PKG_MGR} install -y "$@"; then
+        return 0
       else
         if grep -qiE 'No match for argument|Unable to find a match' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Install failed:"
-          printf '%s\n' "$out" >&2
+          warn "Install failed."
         fi
         return 1
       fi
       ;;
+
     suse)
-      if out="$(${SUDO} zypper install -y "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out ${SUDO} zypper install -y "$@"; then
+        return 0
       else
         if grep -qi 'not found in package names' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Install failed:"
-          printf '%s\n' "$out" >&2
+          warn "Install failed."
         fi
         return 1
       fi
       ;;
+
     alpine)
-      if out="$(${SUDO} apk add "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out ${SUDO} apk add --no-interactive "$@"; then
+        return 0
       else
         if grep -qi 'not found' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Install failed:"
-          printf '%s\n' "$out" >&2
+          warn "Install failed."
         fi
         return 1
       fi
       ;;
+
     void)
-      if out="$(${SUDO} xbps-install -y "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out ${SUDO} xbps-install -y "$@"; then
+        return 0
       else
         if grep -qi 'not found in repository pool' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Install failed:"
-          printf '%s\n' "$out" >&2
+          warn "Install failed."
         fi
         return 1
       fi
       ;;
+
     gentoo)
-      if out="$(${SUDO} emerge "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out ${SUDO} emerge "$@"; then
+        return 0
       else
         if grep -qi 'emerge: there are no ebuilds to satisfy' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Install failed:"
-          printf '%s\n' "$out" >&2
+          warn "Install failed."
         fi
         return 1
       fi
@@ -413,12 +486,16 @@ cmd_remove() {
   if [[ $# -eq 0 ]]; then
     die "You must specify at least one package to remove."
   fi
+  if ! apkg_confirm "Remove packages: $* ?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} remove -y "$@"
       ;;
     arch)
-      ${SUDO} pacman -R "$@"
+      ${SUDO} pacman -R --noconfirm "$@"
       ;;
     redhat)
       ${SUDO} ${PKG_MGR} remove -y "$@"
@@ -427,7 +504,7 @@ cmd_remove() {
       ${SUDO} zypper remove -y "$@"
       ;;
     alpine)
-      ${SUDO} apk del "$@"
+      ${SUDO} apk del --no-interactive "$@"
       ;;
     void)
       if command -v xbps-remove >/dev/null 2>&1; then
@@ -447,12 +524,16 @@ cmd_purge() {
   if [[ $# -eq 0 ]]; then
     die "You must specify at least one package to purge."
   fi
+  if ! apkg_confirm "Purge packages (remove with configs): $* ?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} purge -y "$@"
       ;;
     arch)
-      ${SUDO} pacman -Rns "$@"
+      ${SUDO} pacman -Rns --noconfirm "$@"
       ;;
     redhat)
       ${SUDO} ${PKG_MGR} remove -y "$@"
@@ -461,7 +542,7 @@ cmd_purge() {
       ${SUDO} zypper remove -y "$@"
       ;;
     alpine)
-      ${SUDO} apk del "$@"
+      ${SUDO} apk del --no-interactive "$@"
       ;;
     void)
       if command -v xbps-remove >/dev/null 2>&1; then
@@ -478,6 +559,10 @@ cmd_purge() {
 
 cmd_autoremove() {
   ensure_pkg_mgr
+  if ! apkg_confirm "Autoremove unused/orphan packages?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} autoremove -y
@@ -488,7 +573,7 @@ cmd_autoremove() {
       if [[ -n "${ORPHANS}" ]]; then
         log "Removing orphaned packages:"
         printf '%s\n' "${ORPHANS}"
-        ${SUDO} pacman -Rns ${ORPHANS}
+        ${SUDO} pacman -Rns --noconfirm ${ORPHANS}
       else
         log "No orphaned packages found."
       fi
@@ -522,7 +607,6 @@ cmd_search() {
       apt-cache search "$@"
       ;;
     arch)
-      # pacman search ثم لو مفيش حاجة ممكن المستخدم يستخدم yay يدويًا
       pacman -Ss "$@"
       ;;
     redhat)
@@ -581,85 +665,84 @@ cmd_show() {
   fi
   case "${PKG_MGR_FAMILY}" in
     debian)
-      if out="$(apt-cache show "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out apt-cache show "$@"; then
+        return 0
       else
         if grep -qi 'E: No packages found' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Show failed:"
-          printf '%s\n' "$out" >&2
+          warn "Show failed."
         fi
         return 1
       fi
       ;;
     arch)
-      if out="$(pacman -Si "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out pacman -Si "$@"; then
+        return 0
       else
         if grep -qi 'target not found' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Show failed:"
-          printf '%s\n' "$out" >&2
+          warn "Show failed."
         fi
         return 1
       fi
       ;;
     redhat)
-      if out="$(${PKG_MGR} info "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out ${PKG_MGR} info "$@"; then
+        return 0
       else
         if grep -qiE 'No matching Packages to list|Error: No matching Packages' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Show failed:"
-          printf '%s\n' "$out" >&2
+          warn "Show failed."
         fi
         return 1
       fi
       ;;
     suse)
-      if out="$(zypper info "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out zypper info "$@"; then
+        return 0
       else
         if grep -qi 'not found in package names' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Show failed:"
-          printf '%s\n' "$out" >&2
+          warn "Show failed."
         fi
         return 1
       fi
       ;;
     alpine)
-      if out="$(apk info -a "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out apk info -a "$@"; then
+        return 0
       else
         if grep -qi 'not found' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Show failed:"
-          printf '%s\n' "$out" >&2
+          warn "Show failed."
         fi
         return 1
       fi
       ;;
     void)
-      if out="$(xbps-query -RS "$@" 2>&1)"; then
-        printf '%s\n' "$out"
+      local out=""
+      if run_and_capture out xbps-query -RS "$@"; then
+        return 0
       else
         if grep -qi 'not found in repository pool' <<< "$out"; then
           print_pkg_not_found_msgs "$@"
         else
-          warn "Show failed:"
-          printf '%s\n' "$out" >&2
+          warn "Show failed."
         fi
         return 1
       fi
       ;;
     gentoo)
-      # مفيش أمر موحّد بسيط، نخلي المستخدم يعتمد على equery لو موجود
       if command -v equery >/dev/null 2>&1; then
         equery meta "$@"
       else
@@ -671,12 +754,16 @@ cmd_show() {
 
 cmd_clean() {
   ensure_pkg_mgr
+  if ! apkg_confirm "Clean package cache?"; then
+    return 1
+  fi
+
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} clean
       ;;
     arch)
-      ${SUDO} pacman -Scc
+      ${SUDO} pacman -Scc --noconfirm
       ;;
     redhat)
       ${SUDO} ${PKG_MGR} clean all
@@ -700,7 +787,7 @@ cmd_clean() {
   esac
 }
 
-# ------------- repo management commands -------------
+# ------------- repo management -------------
 
 cmd_repos_list() {
   ensure_pkg_mgr
@@ -835,6 +922,10 @@ cmd_remove_repo() {
 
 cmd_install_dev_kit() {
   ensure_pkg_mgr
+  if ! apkg_confirm "Install development tools (compiler, git, etc.)?"; then
+    return 1
+  fi
+
   log "Installing basic development tools (best-effort for ${PKG_MGR_FAMILY})..."
   case "${PKG_MGR_FAMILY}" in
     debian)
@@ -842,7 +933,7 @@ cmd_install_dev_kit() {
       ${SUDO} ${PKG_MGR} install -y build-essential git curl wget pkg-config
       ;;
     arch)
-      arch_install_with_yay base-devel git curl wget pkgconf -noconfirm
+      arch_install_with_yay base-devel git curl wget pkgconf
       ;;
     redhat)
       ${SUDO} ${PKG_MGR} groupinstall -y "Development Tools" || true
