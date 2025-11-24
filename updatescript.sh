@@ -149,6 +149,7 @@ ask_confirmation() {
   esac
 }
 
+
 install_curl_if_needed() {
   if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
     return 0
