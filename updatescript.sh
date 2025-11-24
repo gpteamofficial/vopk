@@ -158,7 +158,6 @@ ask_confirmation() {
   esac
 }
 
-
 install_curl_if_needed() {
   if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
     return 0
@@ -286,14 +285,14 @@ install_yay_arch() {
   pacman -Sy --needed --noconfirm base-devel git
 
   log_install "Switching to 'aurbuild' to build and install yay from AUR..."
-  su - aurbuild -c '
-    set -eu
-    workdir=$(mktemp -d /tmp/yay.XXXXXX)
-    cd "$workdir"
-    git clone --depth=1 https://aur.archlinux.org/yay-bin.git
-    cd yay-bin
-    makepkg -si --noconfirm
-  '
+  su - aurbuild <<'EOF'
+set -eu
+workdir="$(mktemp -d /tmp/yay.XXXXXX)"
+cd "$workdir"
+git clone --depth=1 https://aur.archlinux.org/yay-bin.git
+cd yay-bin
+makepkg -si --noconfirm
+EOF
 
   ok "yay has been installed."
 
