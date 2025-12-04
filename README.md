@@ -1,4 +1,4 @@
-# APKG — The GP Team Unified Package Manager
+# APKG — The Unified Package Manager
 
 **APKG** is a cross-distribution, production-ready **unified package manager** built and maintained by the **GP Team**.  
 It provides **one CLI** for all major Linux distributions — with identical commands, identical options, and predictable behavior everywhere.
