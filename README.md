@@ -13,7 +13,7 @@ It provides **one CLI** for all major Linux distributions — with identical com
     <img src="https://img.shields.io/badge/license-GPL3-blue.svg" alt="License: MIT">
   </a>
   <a href="https://github.com/gpteamofficial/vopk">
-    <img src="https://img.shields.io/badge/type-self--contained%20pkg%20manager-ff6f00" alt="Self-contained package manager">
+    <img src="https://img.shields.io/badge/type-Unified%20pkg%20manager-ff6f00" alt="Unified package manager">
   </a>
 </p>
 
