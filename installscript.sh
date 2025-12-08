@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# APKG Installer - GP Team (modded)
-# Installs apkg into /bin/apkg and prepares dependencies per distro.
+# VOPK Installer - GP Team
+# Installs vopk into /usr/local/bin/vopk and prepares dependencies per distro.
 # - Polite confirmation before doing anything (unless -y)
 # - On Arch: temporary 'aurbuild' user to install yay, then cleanup
 # - Colored output via printf
@@ -8,8 +8,8 @@
 
 set -eu
 
-APKG_URL="https://raw.githubusercontent.com/gpteamofficial/apkg/main/apkg"
-APKG_DEST="/bin/apkg"
+VOPK_URL="https://raw.githubusercontent.com/gpteamofficial/vopkg/main/vopk"
+VOPK_DEST="/usr/local/bin/vopk"
 
 PKG_MGR=""
 PKG_FAMILY=""
@@ -35,19 +35,19 @@ fi
 # --------------- helpers ---------------
 
 log() {
-  printf '%s[apkg-installer]%s %s\n' "$C_INFO" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer]%s %s\n' "$C_INFO" "$C_RESET" "$*" >&2
 }
 
 warn() {
-  printf '%s[apkg-installer][WARN]%s %s\n' "$C_WARN" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][WARN]%s %s\n' "$C_WARN" "$C_RESET" "$*" >&2
 }
 
 ok() {
-  printf '%s[apkg-installer][OK]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][OK]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
 }
 
 fail() {
-  printf '%s[apkg-installer][ERROR]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][ERROR]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
   exit 1
 }
 
@@ -97,7 +97,6 @@ ask_confirmation() {
   msg=$1
   default=${2:-N}
 
-  # non-interactive mode: always yes
   if [ "$AUTO_YES" -eq 1 ]; then
     log "AUTO_YES enabled; auto-confirming: $msg"
     return 0
@@ -114,8 +113,17 @@ ask_confirmation() {
       ;;
   esac
 
-  printf '%s[apkg-installer][PROMPT]%s %s %s ' "$C_WARN" "$C_RESET" "$msg" "$prompt" >&2
-  if ! read -r ans </dev/tty; then
+  printf '%s[vopk-installer][PROMPT]%s %s %s ' "$C_WARN" "$C_RESET" "$msg" "$prompt" >&2
+
+  if [ -t 0 ]; then
+    if ! read -r ans </dev/tty; then
+      return 1
+    fi
+  elif [ -r /dev/tty ]; then
+    if ! read -r ans </dev/tty; then
+      return 1
+    fi
+  else
     return 1
   fi
 
@@ -148,8 +156,14 @@ install_curl_if_needed() {
 
   case "$PKG_FAMILY" in
     debian)
-      "$PKG_MGR" update -y 2>/dev/null || "$PKG_MGR" update || true
-      "$PKG_MGR" install -y curl
+      # apt-get supports -y on update, apt doesn't
+      if [ "$PKG_MGR" = "apt-get" ]; then
+        "$PKG_MGR" update -y 2>/dev/null || "$PKG_MGR" update || true
+        "$PKG_MGR" install -y curl
+      else
+        "$PKG_MGR" update 2>/dev/null || true
+        "$PKG_MGR" install curl
+      fi
       ;;
     arch)
       pacman -Sy --noconfirm curl
@@ -163,7 +177,7 @@ install_curl_if_needed() {
       ;;
     alpine)
       apk update || true
-      apk add curl
+      apk add --no-cache curl
       ;;
     *)
       fail "Unsupported package manager family '${PKG_FAMILY}' for installing curl."
@@ -177,20 +191,20 @@ install_curl_if_needed() {
   ok "curl (or wget) is now available."
 }
 
-download_apkg() {
-  tmpfile="$(mktemp /tmp/apkg.XXXXXX.sh)"
+download_vopk() {
+  tmpfile="$(mktemp /tmp/vopk.XXXXXX.sh)"
 
   if command -v curl >/dev/null 2>&1; then
-    log "Downloading APKG using curl..."
-    if ! curl -fsSL "$APKG_URL" -o "$tmpfile"; then
+    log "Downloading VOPK using curl..."
+    if ! curl -fsSL "$VOPK_URL" -o "$tmpfile"; then
       rm -f "$tmpfile"
-      fail "Failed to download APKG (curl)."
+      fail "Failed to download VOPK (curl)."
     fi
   elif command -v wget >/dev/null 2>&1; then
-    log "Downloading APKG using wget..."
-    if ! wget -qO "$tmpfile" "$APKG_URL"; then
+    log "Downloading VOPK using wget..."
+    if ! wget -qO "$tmpfile" "$VOPK_URL"; then
       rm -f "$tmpfile"
-      fail "Failed to download APKG (wget)."
+      fail "Failed to download VOPK (wget)."
     fi
   else
     rm -f "$tmpfile"
@@ -199,23 +213,23 @@ download_apkg() {
 
   if [ ! -s "$tmpfile" ]; then
     rm -f "$tmpfile"
-    fail "Downloaded file is empty. Check network or APKG_URL."
+    fail "Downloaded file is empty. Check network or VOPK_URL."
   fi
 
-  ok "APKG script downloaded to temporary file."
+  ok "VOPK script downloaded to temporary file."
   printf '%s\n' "$tmpfile"
 }
 
-install_apkg() {
+install_vopk() {
   src=$1
 
-  log "Installing APKG to ${APKG_DEST} ..."
-  mkdir -p "$(dirname "$APKG_DEST")"
+  log "Installing VOPK to ${VOPK_DEST} ..."
+  mkdir -p "$(dirname "$VOPK_DEST")"
 
-  mv "$src" "$APKG_DEST"
-  chmod 0755 "$APKG_DEST"
+  mv "$src" "$VOPK_DEST"
+  chmod 0755 "$VOPK_DEST"
 
-  ok "APKG installed successfully at: ${APKG_DEST}"
+  ok "VOPK installed successfully at: ${VOPK_DEST}"
 }
 
 install_yay_arch() {
@@ -244,7 +258,6 @@ install_yay_arch() {
   pacman -Sy --needed --noconfirm base-devel git
 
   log "Switching to 'aurbuild' to build and install yay from AUR..."
-  # نستخدم here-doc عشان نخلي الأوامر تشتغل جوّا شيل اليوزر الجديد
   su - aurbuild <<'EOF'
 set -eu
 workdir="$(mktemp -d /tmp/yay.XXXXXX)"
@@ -271,15 +284,15 @@ EOF
 }
 
 print_summary() {
-  printf '\n%sAPKG installation completed.%s\n\n' "$C_OK" "$C_RESET"
-  printf 'Binary location:\n  %s\n\n' "$APKG_DEST"
+  printf '\n%sVOPK installation completed.%s\n\n' "$C_OK" "$C_RESET"
+  printf 'Binary location:\n  %s\n\n' "$VOPK_DEST"
   printf 'Basic usage:\n'
-  printf '  apkg help\n'
-  printf '  apkg update\n'
-  printf '  apkg full-upgrade\n'
-  printf '  apkg install <package>\n'
-  printf '  apkg remove <package>\n\n'
-  printf 'APKG is a unified package manager interface by GP Team.\n'
+  printf '  vopk help\n'
+  printf '  vopk update\n'
+  printf '  vopk full-upgrade\n'
+  printf '  vopk install <package>\n'
+  printf '  vopk remove <package>\n\n'
+  printf 'VOPK is a unified package manager interface by GP Team.\n'
 }
 
 parse_args() {
@@ -306,12 +319,12 @@ main() {
   parse_args "$@"
   detect_pkg_mgr
 
-  log "Welcome to the APKG installer."
+  log "Welcome to the VOPK installer."
 
   log "Planned actions:"
   log "  - Ensure curl or wget is installed."
-  log "  - Download APKG from: $APKG_URL"
-  log "  - Install APKG to:   $APKG_DEST"
+  log "  - Download VOPK from: $VOPK_URL"
+  log "  - Install VOPK to:   $VOPK_DEST"
   if [ "$PKG_FAMILY" = "arch" ]; then
     log "  - (Arch) Create a temporary user 'aurbuild' to install yay, then clean it up."
   fi
@@ -328,8 +341,8 @@ main() {
     install_yay_arch
   fi
 
-  tmpfile="$(download_apkg)"
-  install_apkg "$tmpfile"
+  tmpfile="$(download_vopk)"
+  install_vopk "$tmpfile"
   print_summary
 }
 

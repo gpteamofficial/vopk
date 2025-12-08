@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# APKG Installer + Maintenance - GP Team (modded)
+# VOPK Installer + Maintenance - GP Team
 # - Polite confirmation before doing anything (unless -y)
 # - On Arch: temporary 'aurbuild' user to install yay, then cleanup
 # - Colored output via printf
@@ -7,9 +7,9 @@
 
 set -eu
 
-APKG_URL="https://raw.githubusercontent.com/gpteamofficial/apkg/main/apkg"
-APKG_DEST="/bin/apkg"
-APKG_BAK="/bin/apkg.bak"
+VOPK_URL="https://raw.githubusercontent.com/gpteamofficial/vopkg/main/vopk"
+VOPK_DEST="/usr/local/bin/vopk"
+VOPK_BAK="/usr/local/bin/vopk.bak"
 
 PKG_MGR=""
 PKG_FAMILY=""
@@ -36,28 +36,28 @@ fi
 # ------------------ helpers ------------------
 
 log() {
-  printf '%s[apkg-installer]%s %s\n' "$C_INFO" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer]%s %s\n' "$C_INFO" "$C_RESET" "$*" >&2
 }
 
 warn() {
-  printf '%s[apkg-installer][WARN]%s %s\n' "$C_WARN" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][WARN]%s %s\n' "$C_WARN" "$C_RESET" "$*" >&2
 }
 
 ok() {
-  printf '%s[apkg-installer][OK]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][OK]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
 }
 
 fail() {
-  printf '%s[apkg-installer][ERROR]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][ERROR]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
   exit 1
 }
 
 log_install() {
-  printf '%s[apkg-installer][INSTALL]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][INSTALL]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
 }
 
 log_delete_msg() {
-  printf '%s[apkg-installer][DELETE]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
+  printf '%s[vopk-installer][DELETE]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
 }
 
 usage() {
@@ -66,12 +66,12 @@ usage() {
   printf '  -y, --yes, --assume-yes   Run non-interactively (assume "yes" to prompts)\n'
   printf '  -h, --help                Show this help and exit\n'
   printf '\nCommands:\n'
-  printf '  install       Fresh install of APKG\n'
-  printf '  update        Update existing APKG (or install if missing)\n'
+  printf '  install       Fresh install of VOPK\n'
+  printf '  update        Update existing VOPK (or install if missing)\n'
   printf '  reinstall     Remove and install again\n'
-  printf '  repair        Check/fix APKG binary\n'
-  printf '  delete        Delete APKG (keep backup if exists)\n'
-  printf '  delete-all    Delete APKG and backup\n'
+  printf '  repair        Check/fix VOPK binary\n'
+  printf '  delete        Delete VOPK (keep backup if exists)\n'
+  printf '  delete-all    Delete VOPK and backup\n'
   printf '  menu          Show interactive menu (default)\n'
 }
 
@@ -130,7 +130,7 @@ ask_confirmation() {
       ;;
   esac
 
-  printf '%s[apkg-installer][PROMPT]%s %s %s ' "$C_WARN" "$C_RESET" "$msg" "$prompt" >&2
+  printf '%s[vopk-installer][PROMPT]%s %s %s ' "$C_WARN" "$C_RESET" "$msg" "$prompt" >&2
 
   if [ -t 0 ]; then
     if ! read -r ans </dev/tty; then
@@ -173,8 +173,13 @@ install_curl_if_needed() {
 
   case "$PKG_FAMILY" in
     debian)
-      "$PKG_MGR" update -y 2>/dev/null || "$PKG_MGR" update || true
-      "$PKG_MGR" install -y curl
+      if [ "$PKG_MGR" = "apt-get" ]; then
+        "$PKG_MGR" update -y 2>/dev/null || "$PKG_MGR" update || true
+        "$PKG_MGR" install -y curl
+      else
+        "$PKG_MGR" update 2>/dev/null || true
+        "$PKG_MGR" install curl
+      fi
       ;;
     arch)
       pacman -Sy --noconfirm curl
@@ -188,7 +193,7 @@ install_curl_if_needed() {
       ;;
     alpine)
       apk update || true
-      apk add curl
+      apk add --no-cache curl
       ;;
     *)
       fail "Unsupported package manager family '${PKG_FAMILY}' for installing curl."
@@ -202,20 +207,20 @@ install_curl_if_needed() {
   ok "curl (or wget) is now available."
 }
 
-download_apkg() {
-  tmpfile="$(mktemp /tmp/apkg.XXXXXX.sh)"
+download_vopk() {
+  tmpfile="$(mktemp /tmp/vopk.XXXXXX.sh)"
 
   if command -v curl >/dev/null 2>&1; then
-    log "Downloading APKG using curl..."
-    if ! curl -fsSL "$APKG_URL" -o "$tmpfile"; then
+    log "Downloading VOPK using curl..."
+    if ! curl -fsSL "$VOPK_URL" -o "$tmpfile"; then
       rm -f "$tmpfile"
-      fail "Failed to download APKG (curl)."
+      fail "Failed to download VOPK (curl)."
     fi
   elif command -v wget >/dev/null 2>&1; then
-    log "Downloading APKG using wget..."
-    if ! wget -qO "$tmpfile" "$APKG_URL"; then
+    log "Downloading VOPK using wget..."
+    if ! wget -qO "$tmpfile" "$VOPK_URL"; then
       rm -f "$tmpfile"
-      fail "Failed to download APKG (wget)."
+      fail "Failed to download VOPK (wget)."
     fi
   else
     rm -f "$tmpfile"
@@ -224,40 +229,40 @@ download_apkg() {
 
   if [ ! -s "$tmpfile" ]; then
     rm -f "$tmpfile"
-    fail "Downloaded file is empty. Check network or APKG_URL."
+    fail "Downloaded file is empty. Check network or VOPK_URL."
   fi
 
-  ok "APKG script downloaded to temporary file."
+  ok "VOPK script downloaded to temporary file."
   printf '%s\n' "$tmpfile"
 }
 
-install_apkg() {
+install_vopk() {
   src=$1
 
-  log_install "Installing APKG to ${APKG_DEST} ..."
-  mkdir -p "$(dirname "$APKG_DEST")"
+  log_install "Installing VOPK to ${VOPK_DEST} ..."
+  mkdir -p "$(dirname "$VOPK_DEST")"
 
-  if [ -f "$APKG_DEST" ]; then
-    log_install "Backing up existing APKG to ${APKG_BAK}"
-    cp -f "$APKG_DEST" "$APKG_BAK" || true
+  if [ -f "$VOPK_DEST" ]; then
+    log_install "Backing up existing VOPK to ${VOPK_BAK}"
+    cp -f "$VOPK_DEST" "$VOPK_BAK" || true
   fi
 
-  mv "$src" "$APKG_DEST"
-  chmod 0755 "$APKG_DEST"
+  mv "$src" "$VOPK_DEST"
+  chmod 0755 "$VOPK_DEST"
 
-  log_install "APKG installed successfully at: ${APKG_DEST}"
+  log_install "VOPK installed successfully at: ${VOPK_DEST}"
 }
 
 print_summary() {
-  printf '\n%sAPKG installation completed.%s\n\n' "$C_OK" "$C_RESET"
-  printf 'Binary location:\n  %s\n\n' "$APKG_DEST"
+  printf '\n%sVOPK installation completed.%s\n\n' "$C_OK" "$C_RESET"
+  printf 'Binary location:\n  %s\n\n' "$VOPK_DEST"
   printf 'Basic usage:\n'
-  printf '  apkg help\n'
-  printf '  apkg update\n'
-  printf '  apkg full-upgrade\n'
-  printf '  apkg install <package>\n'
-  printf '  apkg remove <package>\n\n'
-  printf 'APKG is a unified package manager interface by GP Team.\n'
+  printf '  vopk help\n'
+  printf '  vopk update\n'
+  printf '  vopk full-upgrade\n'
+  printf '  vopk install <package>\n'
+  printf '  vopk remove <package>\n\n'
+  printf 'VOPK is a unified package manager interface by GP Team.\n'
 }
 
 install_yay_arch() {
@@ -313,119 +318,119 @@ EOF
 # ------------------ operations ------------------
 
 op_install() {
-  log_install "Starting APKG fresh installation ..."
+  log_install "Starting VOPK fresh installation ..."
   install_curl_if_needed
   if [ "$PKG_FAMILY" = "arch" ]; then
     install_yay_arch
   fi
-  tmpfile="$(download_apkg)"
-  install_apkg "$tmpfile"
+  tmpfile="$(download_vopk)"
+  install_vopk "$tmpfile"
   print_summary
 }
 
 op_update() {
-  if [ ! -f "$APKG_DEST" ]; then
-    log_install "APKG not found at ${APKG_DEST}. Performing fresh install instead of update."
+  if [ ! -f "$VOPK_DEST" ]; then
+    log_install "VOPK not found at ${VOPK_DEST}. Performing fresh install instead of update."
     op_install
     return
   fi
 
-  log_install "Updating existing APKG at ${APKG_DEST} ..."
+  log_install "Updating existing VOPK at ${VOPK_DEST} ..."
   install_curl_if_needed
   if [ "$PKG_FAMILY" = "arch" ]; then
     install_yay_arch
   fi
-  tmpfile="$(download_apkg)"
-  install_apkg "$tmpfile"
+  tmpfile="$(download_vopk)"
+  install_vopk "$tmpfile"
   log_install "Update completed."
 }
 
 op_reinstall() {
-  log_install "Reinstalling APKG ..."
+  log_install "Reinstalling VOPK ..."
 
-  if [ -f "$APKG_DEST" ]; then
-    log_install "Removing existing APKG at ${APKG_DEST}"
-    rm -f "$APKG_DEST"
+  if [ -f "$VOPK_DEST" ]; then
+    log_install "Removing existing VOPK at ${VOPK_DEST}"
+    rm -f "$VOPK_DEST"
   fi
 
   install_curl_if_needed
   if [ "$PKG_FAMILY" = "arch" ]; then
     install_yay_arch
   fi
-  tmpfile="$(download_apkg)"
-  install_apkg "$tmpfile"
+  tmpfile="$(download_vopk)"
+  install_vopk "$tmpfile"
   log_install "Reinstall completed."
 }
 
 op_repair() {
-  log "Repairing APKG installation ..."
+  log "Repairing VOPK installation ..."
 
   install_curl_if_needed
 
   needs_fix=0
 
-  if [ ! -f "$APKG_DEST" ]; then
-    log "APKG binary missing."
+  if [ ! -f "$VOPK_DEST" ]; then
+    log "VOPK binary missing."
     needs_fix=1
-  elif [ ! -s "$APKG_DEST" ]; then
-    log "APKG binary is empty."
+  elif [ ! -s "$VOPK_DEST" ]; then
+    log "VOPK binary is empty."
     needs_fix=1
-  elif [ ! -x "$APKG_DEST" ]; then
-    log "APKG binary is not executable. Fixing permissions..."
-    if chmod 0755 "$APKG_DEST"; then
+  elif [ ! -x "$VOPK_DEST" ]; then
+    log "VOPK binary is not executable. Fixing permissions..."
+    if chmod 0755 "$VOPK_DEST"; then
       :
     else
       needs_fix=1
     fi
   fi
 
-  if [ -f "$APKG_DEST" ] && ! head -n 1 "$APKG_DEST" | grep -q "bash"; then
-    log "APKG binary does not look like a shell script. Replacing..."
+  if [ -f "$VOPK_DEST" ] && ! head -n 1 "$VOPK_DEST" | grep -q "bash"; then
+    log "VOPK binary does not look like a shell script. Replacing..."
     needs_fix=1
   fi
 
   if [ "$needs_fix" -eq 1 ]; then
-    log_install "Re-downloading APKG to repair installation..."
+    log_install "Re-downloading VOPK to repair installation..."
     if [ "$PKG_FAMILY" = "arch" ]; then
       install_yay_arch
     fi
-    tmpfile="$(download_apkg)"
-    install_apkg "$tmpfile"
+    tmpfile="$(download_vopk)"
+    install_vopk "$tmpfile"
   else
-    log "APKG binary looks fine. No reinstall needed."
+    log "VOPK binary looks fine. No reinstall needed."
   fi
 
   log "Repair step finished."
 }
 
 op_delete() {
-  log_delete_msg "Deleting APKG ..."
+  log_delete_msg "Deleting VOPK ..."
 
-  if [ -f "$APKG_DEST" ]; then
-    log_delete_msg "Removing ${APKG_DEST}"
-    rm -f "$APKG_DEST"
+  if [ -f "$VOPK_DEST" ]; then
+    log_delete_msg "Removing ${VOPK_DEST}"
+    rm -f "$VOPK_DEST"
   else
-    log_delete_msg "APKG not found at ${APKG_DEST}. Nothing to delete."
+    log_delete_msg "VOPK not found at ${VOPK_DEST}. Nothing to delete."
   fi
 
-  log_delete_msg "Delete operation completed (backup kept at ${APKG_BAK} if exists)."
+  log_delete_msg "Delete operation completed (backup kept at ${VOPK_BAK} if exists)."
 }
 
 op_delete_all() {
-  log_delete_msg "Deleting APKG and backup ..."
+  log_delete_msg "Deleting VOPK and backup ..."
 
-  if [ -f "$APKG_DEST" ]; then
-    log_delete_msg "Removing ${APKG_DEST}"
-    rm -f "$APKG_DEST"
+  if [ -f "$VOPK_DEST" ]; then
+    log_delete_msg "Removing ${VOPK_DEST}"
+    rm -f "$VOPK_DEST"
   else
-    log_delete_msg "APKG not found at ${APKG_DEST}."
+    log_delete_msg "VOPK not found at ${VOPK_DEST}."
   fi
 
-  if [ -f "$APKG_BAK" ]; then
-    log_delete_msg "Removing backup ${APKG_BAK}"
-    rm -f "$APKG_BAK"
+  if [ -f "$VOPK_BAK" ]; then
+    log_delete_msg "Removing backup ${VOPK_BAK}"
+    rm -f "$VOPK_BAK"
   else
-    log_delete_msg "No backup file ${APKG_BAK} found."
+    log_delete_msg "No backup file ${VOPK_BAK} found."
   fi
 
   log_delete_msg "Delete + backup operation completed."
@@ -453,9 +458,9 @@ describe_and_confirm() {
     install)
       log "Planned actions for INSTALL:"
       log "  - Ensure curl or wget is installed."
-      log "  - Download latest APKG from: $APKG_URL"
-      log "  - Backup existing APKG to:  $APKG_BAK (if present)"
-      log "  - Install APKG to:          $APKG_DEST"
+      log "  - Download latest VOPK from: $VOPK_URL"
+      log "  - Backup existing VOPK to:   $VOPK_BAK (if present)"
+      log "  - Install VOPK to:           $VOPK_DEST"
       if [ "$PKG_FAMILY" = "arch" ]; then
         log "  - (Arch) Create temporary user 'aurbuild' to install yay, then clean it up."
       fi
@@ -463,41 +468,41 @@ describe_and_confirm() {
     update)
       log "Planned actions for UPDATE:"
       log "  - Ensure curl or wget is installed."
-      log "  - Download latest APKG from: $APKG_URL"
-      log "  - Backup current APKG to:    $APKG_BAK"
-      log "  - Replace existing APKG at:  $APKG_DEST"
+      log "  - Download latest VOPK from: $VOPK_URL"
+      log "  - Backup current VOPK to:    $VOPK_BAK"
+      log "  - Replace existing VOPK at:  $VOPK_DEST"
       if [ "$PKG_FAMILY" = "arch" ]; then
         log "  - (Arch) Ensure yay is installed via temporary 'aurbuild' user if needed."
       fi
       ;;
     reinstall)
       log "Planned actions for REINSTALL:"
-      log "  - Remove existing APKG at:   $APKG_DEST (if present)"
+      log "  - Remove existing VOPK at:   $VOPK_DEST (if present)"
       log "  - Ensure curl or wget is installed."
-      log "  - Download latest APKG from: $APKG_URL"
-      log "  - Install APKG to:           $APKG_DEST"
+      log "  - Download latest VOPK from: $VOPK_URL"
+      log "  - Install VOPK to:           $VOPK_DEST"
       if [ "$PKG_FAMILY" = "arch" ]; then
         log "  - (Arch) Ensure yay is installed via temporary 'aurbuild' user if needed."
       fi
       ;;
     repair)
       log "Planned actions for REPAIR:"
-      log "  - Check APKG binary at:      $APKG_DEST"
+      log "  - Check VOPK binary at:      $VOPK_DEST"
       log "  - Fix permissions if needed."
-      log "  - Re-download APKG if binary missing/corrupt."
+      log "  - Re-download VOPK if binary missing/corrupt."
       if [ "$PKG_FAMILY" = "arch" ]; then
         log "  - (Arch) Ensure yay is installed via temporary 'aurbuild' user if repair requires reinstall."
       fi
       ;;
     delete)
       log "Planned actions for DELETE:"
-      log "  - Remove APKG at:            $APKG_DEST (if present)"
-      log "  - Keep backup at:            $APKG_BAK (if present)"
+      log "  - Remove VOPK at:            $VOPK_DEST (if present)"
+      log "  - Keep backup at:            $VOPK_BAK (if present)"
       ;;
     delete-all)
       log "Planned actions for DELETE-ALL:"
-      log "  - Remove APKG at:            $APKG_DEST (if present)"
-      log "  - Remove backup at:          $APKG_BAK (if present)"
+      log "  - Remove VOPK at:            $VOPK_DEST (if present)"
+      log "  - Remove backup at:          $VOPK_BAK (if present)"
       ;;
     *)
       ;;
@@ -539,7 +544,7 @@ main() {
   require_root
   detect_pkg_mgr
 
-  log "Welcome to the APKG installer & maintenance tool."
+  log "Welcome to the VOPK installer & maintenance tool."
 
   if [ -n "$CMD" ] && [ "$CMD" != "menu" ]; then
     case "$CMD" in
