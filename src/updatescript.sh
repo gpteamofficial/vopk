@@ -1,25 +1,24 @@
 #!/usr/bin/env sh
-# VOPK Installer + Maintenance - GP Team
+# VOPK Installer + Maintenance - Vopk Team
 # - Polite confirmation before doing anything (unless -y)
 # - On Arch: temporary 'aurbuild' user to install yay, then cleanup
 # - Colored output via printf
 # - POSIX sh compatible
 #
 # Designed to work reliably even when piped, e.g.:
-#   curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/updatescript.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/updatescript.sh | sudo sh
+#   curl -fsSL ... | sh
+#   curl -fsSL ... | sudo sh -s -- -y
 #
 # If not running as root, it will try to re-run itself as:
-#   sudo bash <(curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/updatescript.sh)
+#   sudo bash <(curl -fsSL ...)
 
 set -eu
 
-VOPK_URL="https://raw.githubusercontent.com/gpteamofficial/vopk/main/bin/vopk"
+VOPK_URL="https://raw.githubusercontent.com/vopkteam/vopk/main/bin/vopk"
 VOPK_DEST="/usr/local/bin/vopk"
 VOPK_BAK="/usr/local/bin/vopk.bak"
 
-# URL of THIS script, used for self-fallback
-VOPK_UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/updatescript.sh"
+VOPK_UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/vopkteam/vopk/main/src/updatescript.sh"
 
 PKG_MGR=""
 PKG_FAMILY=""
@@ -31,10 +30,10 @@ CMD=""
 
 if [ -t 2 ] && [ "${NO_COLOR:-0}" = "0" ]; then
   C_RESET="$(printf '\033[0m')"
-  C_INFO="$(printf '\033[1;34m')"  # blue
-  C_WARN="$(printf '\033[1;33m')"  # yellow
-  C_ERR="$(printf '\033[1;31m')"   # red
-  C_OK="$(printf '\033[1;32m')"    # green
+  C_INFO="$(printf '\033[1;34m')"
+  C_WARN="$(printf '\033[1;33m')"
+  C_ERR="$(printf '\033[1;31m')"
+  C_OK="$(printf '\033[1;32m')"
 else
   C_RESET=''
   C_INFO=''
@@ -73,36 +72,38 @@ log_delete_msg() {
 usage() {
   printf 'Usage: %s [OPTIONS] [COMMAND]\n' "$0"
   printf '\nOptions:\n'
-  printf '  -y, --yes, --assume-yes   Run non-interactively (assume "yes" to prompts)\n'
-  printf '  -h, --help                Show this help and exit\n'
+  printf '  -y, --yes, --assume-yes   Run non-interactively (assume "yes")\n'
+  printf '  -h, --help                Show this help\n'
   printf '\nCommands:\n'
   printf '  install       Fresh install of VOPK\n'
   printf '  update        Update existing VOPK (or install if missing)\n'
   printf '  reinstall     Remove and install again\n'
   printf '  repair        Check/fix VOPK binary\n'
-  printf '  delete        Delete VOPK (keep backup if exists)\n'
+  printf '  delete        Delete VOPK (keep backup)\n'
   printf '  delete-all    Delete VOPK and backup\n'
   printf '  menu          Show interactive menu (default)\n'
 }
 
+# ❗ تم إلغاء إجبار root، لكن fallback سيظل يعمل كما هو إن وجد
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
-    warn "Not running as root; attempting to re-run via: sudo bash <(curl -fsSL ...)."
+    warn "Not running as root; commands will run with sudo where needed."
 
     if [ "${VOPK_SELF_FALLBACK:-0}" = "1" ]; then
-      fail "Fallback already attempted but still not root. Please run manually with sudo."
+      warn "Fallback already attempted; continuing without root."
+      return 0
     fi
 
     if ! command -v sudo >/dev/null 2>&1; then
-      fail "sudo not found. Please run this script as root (e.g. sudo sh $0)."
+      fail "sudo not found. Install sudo or run with a full shell."
     fi
 
     if ! command -v bash >/dev/null 2>&1; then
-      fail "bash not found. Please install bash or run this script as root with a full shell."
+      fail "bash not found. Install bash or run with a full shell."
     fi
 
     if ! command -v curl >/dev/null 2>&1; then
-      fail "curl not found. Please install curl and re-run this script with sudo."
+      fail "curl not found. Install curl and re-run with sudo."
     fi
 
     export VOPK_SELF_FALLBACK=1
@@ -150,10 +151,7 @@ detect_pkg_mgr() {
   fi
 }
 
-# Always try /dev/tty for interactive input to avoid fighting with pipes.
-# If /dev/tty is not available or read fails, we treat it as non-interactive.
 read_from_tty() {
-  # $1: variable name to assign into
   varname=$1
   if [ -r /dev/tty ]; then
     if IFS= read -r "$varname" 2>/dev/null </dev/tty; then
@@ -164,7 +162,6 @@ read_from_tty() {
 }
 
 ask_confirmation() {
-  # $1 = message, $2 = default (Y/N, optional, default N)
   msg=$1
   default=${2:-N}
 
@@ -174,38 +171,25 @@ ask_confirmation() {
   fi
 
   case "$default" in
-    Y|y)
-      prompt="[Y/n]"
-      def="Y"
-      ;;
-    *)
-      prompt="[y/N]"
-      def="N"
-      ;;
+    Y|y) prompt="[Y/n]"; def="Y" ;;
+    *)   prompt="[y/N]"; def="N" ;;
   esac
 
   printf '%s[vopk-installer][PROMPT]%s %s %s ' "$C_WARN" "$C_RESET" "$msg" "$prompt" >&2
 
   ans=""
   if ! read_from_tty ans; then
-    # لا يوجد TTY → اشتغل non-interactive وافترض YES
     printf '\n' >&2
-    warn "No interactive terminal available; assuming YES in non-interactive mode."
-    warn "Proceeding as if you confirmed the operation."
+    warn "No interactive terminal available; assuming YES."
+    warn "Proceeding as if you confirmed."
     return 0
   fi
 
-  if [ -z "$ans" ]; then
-    ans="$def"
-  fi
+  [ -z "$ans" ] && ans="$def"
 
   case "$ans" in
-    Y|y|yes|YES|Yes|Yea|Yeah)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
+    Y|y|yes|YES|Yes|Yea|Yeah) return 0 ;;
+    *)                       return 1 ;;
   esac
 }
 
@@ -217,60 +201,55 @@ install_curl_if_needed() {
   detect_pkg_mgr
 
   if [ -z "$PKG_MGR" ]; then
-    fail "No supported package manager found to install curl (pacman/apt/dnf/yum/zypper/apk/brew/pkg/pkg_add/pkgin). Install curl or wget manually and rerun."
+    fail "No supported package manager found to install curl."
   fi
 
-  log "Neither curl nor wget found. Installing curl using ${PKG_MGR}..."
+  log "Installing curl using ${PKG_MGR} with sudo..."
 
   case "$PKG_FAMILY" in
     debian)
-      if [ "$PKG_MGR" = "apt-get" ]; then
-        "$PKG_MGR" update -y 2>/dev/null || "$PKG_MGR" update || true
-        "$PKG_MGR" install -y curl
-      else
-        "$PKG_MGR" update 2>/dev/null || true
-        "$PKG_MGR" install curl
-      fi
+      sudo $PKG_MGR update -y 2>/dev/null || sudo $PKG_MGR update || true
+      sudo $PKG_MGR install -y curl
       ;;
     arch)
-      pacman -Sy --noconfirm curl
+      sudo pacman -Sy --noconfirm curl
       ;;
     redhat)
-      "$PKG_MGR" install -y curl
+      sudo $PKG_MGR install -y curl
       ;;
     suse)
-      zypper refresh || true
-      zypper install -y curl
+      sudo zypper refresh || true
+      sudo zypper install -y curl
       ;;
     alpine)
-      apk update || true
-      apk add --no-cache curl
+      sudo apk update || true
+      sudo apk add --no-cache curl
       ;;
     brew)
       brew update || true
       brew install curl
       ;;
     freebsd)
-      pkg update -y || true
-      pkg install -y curl
+      sudo pkg update -y || true
+      sudo pkg install -y curl
       ;;
     netbsd)
-      pkgin -y update || true
-      pkgin -y install curl
+      sudo pkgin -y update || true
+      sudo pkgin -y install curl
       ;;
     openbsd)
-      pkg_add curl || true
+      sudo pkg_add curl || true
       ;;
     *)
-      fail "Unsupported package manager family '${PKG_FAMILY}' for installing curl."
+      fail "Unsupported family '$PKG_FAMILY' for installing curl."
       ;;
   esac
 
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-    fail "Failed to install curl. Please install curl or wget manually, then rerun."
+    fail "Failed to install curl."
   fi
 
-  ok "curl (or wget) is now available."
+  ok "curl is now available."
 }
 
 download_vopk() {
@@ -278,27 +257,18 @@ download_vopk() {
 
   if command -v curl >/dev/null 2>&1; then
     log "Downloading VOPK using curl..."
-    if ! curl -fsSL "$VOPK_URL" -o "$tmpfile"; then
-      rm -f "$tmpfile"
-      fail "Failed to download VOPK (curl)."
-    fi
+    sudo curl -fsSL "$VOPK_URL" -o "$tmpfile"
   elif command -v wget >/dev/null 2>&1; then
     log "Downloading VOPK using wget..."
-    if ! wget -qO "$tmpfile" "$VOPK_URL"; then
-      rm -f "$tmpfile"
-      fail "Failed to download VOPK (wget)."
-    fi
+    sudo wget -qO "$tmpfile" "$VOPK_URL"
   else
     rm -f "$tmpfile"
-    fail "Neither curl nor wget available after installation step. Aborting."
+    fail "Neither curl nor wget available."
   fi
 
-  if [ ! -s "$tmpfile" ]; then
-    rm -f "$tmpfile"
-    fail "Downloaded file is empty. Check network or VOPK_URL."
-  fi
+  [ ! -s "$tmpfile" ] && fail "Downloaded file is empty."
 
-  ok "VOPK script downloaded to temporary file."
+  ok "VOPK downloaded."
   printf '%s\n' "$tmpfile"
 }
 
@@ -306,79 +276,17 @@ install_vopk() {
   src=$1
 
   log_install "Installing VOPK to ${VOPK_DEST} ..."
-  mkdir -p "$(dirname "$VOPK_DEST")"
+  sudo mkdir -p "$(dirname "$VOPK_DEST")"
 
   if [ -f "$VOPK_DEST" ]; then
     log_install "Backing up existing VOPK to ${VOPK_BAK}"
-    cp -f "$VOPK_DEST" "$VOPK_BAK" || true
+    sudo cp -f "$VOPK_DEST" "$VOPK_BAK" || true
   fi
 
-  mv "$src" "$VOPK_DEST"
-  chmod 0755 "$VOPK_DEST"
+  sudo mv "$src" "$VOPK_DEST"
+  sudo chmod 0755 "$VOPK_DEST"
 
   log_install "VOPK installed successfully at: ${VOPK_DEST}"
-}
-
-print_summary() {
-  printf '\n%sVOPK installation completed.%s\n\n' "$C_OK" "$C_RESET"
-  printf 'Binary location:\n  %s\n\n' "$VOPK_DEST"
-  printf 'Basic usage:\n'
-  printf '  vopk help\n'
-  printf '  vopk update\n'
-  printf '  vopk full-upgrade\n'
-  printf '  vopk install <package>\n'
-  printf '  vopk remove <package>\n\n'
-  printf 'VOPK is a unified package manager interface by GP Team.\n'
-}
-
-install_yay_arch() {
-  if ! command -v pacman >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if command -v yay >/dev/null 2>&1; then
-    ok "Detected 'yay' already installed; skipping AUR helper installation."
-    return 0
-  fi
-
-  log_install "Preparing temporary AUR build user 'aurbuild' to install yay..."
-
-  if id -u aurbuild >/dev/null 2>&1; then
-    warn "User 'aurbuild' already exists; will reuse it and NOT remove it afterwards."
-    AUR_USER_CREATED=0
-  else
-    useradd -m -r -s /bin/bash aurbuild
-    AUR_USER_CREATED=1
-    ok "Temporary user 'aurbuild' created."
-  fi
-
-  log_install "Ensuring base-devel and git are installed via pacman..."
-  pacman -Sy --needed --noconfirm base-devel git
-
-  log_install "Switching to 'aurbuild' to build and install yay from AUR..."
-  su - aurbuild <<'EOF'
-set -eu
-workdir="$(mktemp -d /tmp/yay.XXXXXX)"
-cd "$workdir"
-git clone --depth=1 https://aur.archlinux.org/yay-bin.git
-cd yay-bin
-makepkg -si --noconfirm
-EOF
-
-  ok "yay has been installed."
-
-  if [ "$AUR_USER_CREATED" -eq 1 ]; then
-    log_install "Cleaning up temporary user 'aurbuild' and its home directory..."
-    if userdel -r aurbuild 2>/dev/null; then
-      ok "Temporary user 'aurbuild' removed."
-    else
-      warn "Failed to remove user 'aurbuild'; please remove it manually if not needed."
-    fi
-  else
-    warn "Not removing existing 'aurbuild' user (it existed before running this script)."
-  fi
-
-  ok "Returned from temporary user; continuing as root."
 }
 
 # ------------------ operations ------------------
@@ -396,12 +304,12 @@ op_install() {
 
 op_update() {
   if [ ! -f "$VOPK_DEST" ]; then
-    log_install "VOPK not found at ${VOPK_DEST}. Performing fresh install instead of update."
+    log_install "VOPK not found. Fresh install instead of update."
     op_install
     return
   fi
 
-  log_install "Updating existing VOPK at ${VOPK_DEST} ..."
+  log_install "Updating existing VOPK ..."
   install_curl_if_needed
   if [ "$PKG_FAMILY" = "arch" ]; then
     install_yay_arch
@@ -413,15 +321,9 @@ op_update() {
 
 op_reinstall() {
   log_install "Reinstalling VOPK ..."
-
   if [ -f "$VOPK_DEST" ]; then
-    log_install "Removing existing VOPK at ${VOPK_DEST}"
-    rm -f "$VOPK_DEST"
-  fi
-
-  install_curl_if_needed
-  if [ "$PKG_FAMILY" = "arch" ]; then
-    install_yay_arch
+    log_install "Removing existing VOPK..."
+    sudo rm -f "$VOPK_DEST"
   fi
   tmpfile="$(download_vopk)"
   install_vopk "$tmpfile"
@@ -430,263 +332,102 @@ op_reinstall() {
 
 op_repair() {
   log "Repairing VOPK installation ..."
-
-  install_curl_if_needed
-
   needs_fix=0
 
-  if [ ! -f "$VOPK_DEST" ]; then
-    log "VOPK binary missing."
-    needs_fix=1
-  elif [ ! -s "$VOPK_DEST" ]; then
-    log "VOPK binary is empty."
-    needs_fix=1
-  elif [ ! -x "$VOPK_DEST" ]; then
-    log "VOPK binary is not executable. Fixing permissions..."
-    if chmod 0755 "$VOPK_DEST"; then
-      :
-    else
-      needs_fix=1
-    fi
-  fi
-
-  if [ -f "$VOPK_DEST" ] && ! head -n 1 "$VOPK_DEST" | grep -q "bash"; then
-    log "VOPK binary does not look like a shell script. Replacing..."
+  if [ ! -f "$VOPK_DEST" ] || [ ! -s "$VOPK_DEST" ] || [ ! -x "$VOPK_DEST" ]; then
+    warn "Binary missing/corrupt/not executable."
     needs_fix=1
   fi
 
   if [ "$needs_fix" -eq 1 ]; then
-    log_install "Re-downloading VOPK to repair installation..."
-    if [ "$PKG_FAMILY" = "arch" ]; then
-      install_yay_arch
-    fi
     tmpfile="$(download_vopk)"
     install_vopk "$tmpfile"
   else
-    log "VOPK binary looks fine. No reinstall needed."
+    log "Binary looks fine. No repair needed."
   fi
-
   log "Repair step finished."
 }
 
 op_delete() {
   log_delete_msg "Deleting VOPK ..."
-
-  if [ -f "$VOPK_DEST" ]; then
-    log_delete_msg "Removing ${VOPK_DEST}"
-    rm -f "$VOPK_DEST"
-  else
-    log_delete_msg "VOPK not found at ${VOPK_DEST}. Nothing to delete."
-  fi
-
-  log_delete_msg "Delete operation completed (backup kept at ${VOPK_BAK} if exists)."
+  sudo rm -f "$VOPK_DEST" 2>/dev/null || warn "Nothing to delete."
+  log_delete_msg "Delete completed (backup kept)."
 }
 
 op_delete_all() {
-  log_delete_msg "Deleting VOPK and backup ..."
-
-  if [ -f "$VOPK_DEST" ]; then
-    log_delete_msg "Removing ${VOPK_DEST}"
-    rm -f "$VOPK_DEST"
-  else
-    log_delete_msg "VOPK not found at ${VOPK_DEST}."
-  fi
-
-  if [ -f "$VOPK_BAK" ]; then
-    log_delete_msg "Removing backup ${VOPK_BAK}"
-    rm -f "$VOPK_BAK"
-  else
-    log_delete_msg "No backup file ${VOPK_BAK} found."
-  fi
-
-  log_delete_msg "Delete + backup operation completed."
+  log_delete_msg "Deleting VOPK + backup ..."
+  sudo rm -f "$VOPK_DEST" "$VOPK_BAK" 2>/dev/null || true
+  log_delete_msg "Delete-all completed."
 }
 
-# ------------------ menu ------------------
+install_yay_arch() {
+  if ! command -v pacman >/dev/null 2>&1; then return 0; fi
+  if command -v yay >/dev/null 2>&1; then ok "yay exists; skip."; return 0; fi
+
+  log_install "Preparing temporary AUR build user 'aurbuild' to install yay..."
+  if id -u aurbuild >/dev/null 2>&1; then
+    warn "aurbuild exists; reusing."
+  else
+    sudo useradd -m -r -s /bin/bash aurbuild
+    AUR_USER_CREATED=1
+    ok "aurbuild created."
+  fi
+
+  sudo pacman -Sy --needed --noconfirm base-devel git
+
+  sudo su - aurbuild <<'EOF'
+set -eu
+workdir="$(mktemp -d /tmp/yay.XXXXXX)"
+cd "$workdir"
+git clone --depth=1 https://aur.archlinux.org/yay-bin.git
+cd yay-bin
+makepkg -si --noconfirm
+EOF
+
+  ok "yay installed."
+
+  if [ "$AUR_USER_CREATED" -eq 1 ]; then
+    sudo userdel -r aurbuild 2>/dev/null && ok "aurbuild removed." || warn "Manual cleanup may be needed."
+  else
+    warn "Keeping existing aurbuild."
+  fi
+}
 
 show_menu() {
-  printf 'Choose What You Want To Do:\n\n'
-  printf '  1) Repair\n'
-  printf '  2) Reinstall\n'
-  printf '  3) Delete\n'
-  printf '  4) Delete and delete backup\n'
-  printf '  5) Update\n\n'
-  printf '  0) Exit\n'
-  printf '[INPUT] -❯ : '
+  printf '\nChoose What You Want To Do:\n\n'
+  printf '  1) Repair\n  2) Reinstall\n  3) Delete\n  4) Delete-all\n  5) Update\n  0) Exit\n\n[INPUT] -❯ : '
 }
-
-# ------------------ describe & confirm ------------------
-
-describe_and_confirm() {
-  op=$1
-
-  case "$op" in
-    install)
-      log "Planned actions for INSTALL:"
-      log "  - Ensure curl or wget is installed."
-      log "  - Download latest VOPK from: $VOPK_URL"
-      log "  - Backup existing VOPK to:   $VOPK_BAK (if present)"
-      log "  - Install VOPK to:           $VOPK_DEST"
-      if [ "$PKG_FAMILY" = "arch" ]; then
-        log "  - (Arch) Create temporary user 'aurbuild' to install yay, then clean it up."
-      fi
-      ;;
-    update)
-      log "Planned actions for UPDATE:"
-      log "  - Ensure curl or wget is installed."
-      log "  - Download latest VOPK from: $VOPK_URL"
-      log "  - Backup current VOPK to:    $VOPK_BAK"
-      log "  - Replace existing VOPK at:  $VOPK_DEST"
-      if [ "$PKG_FAMILY" = "arch" ]; then
-        log "  - (Arch) Ensure yay is installed via temporary 'aurbuild' user if needed."
-      fi
-      ;;
-    reinstall)
-      log "Planned actions for REINSTALL:"
-      log "  - Remove existing VOPK at:   $VOPK_DEST (if present)"
-      log "  - Ensure curl or wget is installed."
-      log "  - Download latest VOPK from: $VOPK_URL"
-      log "  - Install VOPK to:           $VOPK_DEST"
-      if [ "$PKG_FAMILY" = "arch" ]; then
-        log "  - (Arch) Ensure yay is installed via temporary 'aurbuild' user if needed."
-      fi
-      ;;
-    repair)
-      log "Planned actions for REPAIR:"
-      log "  - Check VOPK binary at:      $VOPK_DEST"
-      log "  - Fix permissions if needed."
-      log "  - Re-download VOPK if binary missing/corrupt."
-      if [ "$PKG_FAMILY" = "arch" ]; then
-        log "  - (Arch) Ensure yay is installed via temporary 'aurbuild' user if repair requires reinstall."
-      fi
-      ;;
-    delete)
-      log "Planned actions for DELETE:"
-      log "  - Remove VOPK at:            $VOPK_DEST (if present)"
-      log "  - Keep backup at:            $VOPK_BAK (if present)"
-      ;;
-    delete-all)
-      log "Planned actions for DELETE-ALL:"
-      log "  - Remove VOPK at:            $VOPK_DEST (if present)"
-      log "  - Remove backup at:          $VOPK_BAK (if present)"
-      ;;
-    *)
-      ;;
-  esac
-
-  if ! ask_confirmation "Do you want to continue with this operation?" "N"; then
-    warn "Operation aborted by user; nothing was changed."
-    exit 0
-  fi
-}
-
-# ------------------ args parsing ------------------
-
-parse_args() {
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      -y|--yes|--assume-yes)
-        AUTO_YES=1
-        ;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      install|update|reinstall|repair|delete|remove|uninstall|delete-all|delete_all|menu)
-        CMD="$1"
-        ;;
-      *)
-        warn "Unknown option or command: $1"
-        ;;
-    esac
-    shift
-  done
-}
-
-# ------------------ main ------------------
 
 main() {
   parse_args "$@"
-  require_root
   detect_pkg_mgr
-
   log "Welcome to the VOPK installer & maintenance tool."
 
-  # Explicit command mode, works great with:
-  #   curl .../updatescript.sh | sudo sh -s -- -y update
   if [ -n "$CMD" ] && [ "$CMD" != "menu" ]; then
+    describe_and_confirm "$CMD"
     case "$CMD" in
-      install)
-        describe_and_confirm "install"
-        op_install
-        ;;
-      update)
-        describe_and_confirm "update"
-        op_update
-        ;;
-      reinstall)
-        describe_and_confirm "reinstall"
-        op_reinstall
-        ;;
-      repair)
-        describe_and_confirm "repair"
-        op_repair
-        ;;
-      delete|remove|uninstall)
-        describe_and_confirm "delete"
-        op_delete
-        ;;
-      delete-all|delete_all)
-        describe_and_confirm "delete-all"
-        op_delete_all
-        ;;
-      *)
-        fail "Unknown command '$CMD'."
-        ;;
+      install)     op_install ;;
+      update)      op_update ;;
+      reinstall)   op_reinstall ;;
+      repair)      op_repair ;;
+      delete)      op_delete ;;
+      delete-all)  op_delete_all ;;
     esac
     exit 0
   fi
 
-  # interactive menu (default behavior if TTY موجود)
   show_menu
-
   choice=""
-  if ! read_from_tty choice; then
-    printf '\n' >&2
-    warn "No interactive TTY available; defaulting to 'update' operation in non-interactive mode."
-    describe_and_confirm "update"
-    op_update
-    exit 0
-  fi
+  read_from_tty choice || { warn "No TTY; default update."; describe_and_confirm "update"; op_update; exit 0; }
 
   case "$choice" in
-    1)
-      describe_and_confirm "repair"
-      op_repair
-      ;;
-    2)
-      describe_and_confirm "reinstall"
-      op_reinstall
-      ;;
-    3)
-      describe_and_confirm "delete"
-      op_delete
-      ;;
-    4)
-      describe_and_confirm "delete-all"
-      op_delete_all
-      ;;
-    5)
-      describe_and_confirm "update"
-      op_update
-      ;;
-    0)
-      log "Exiting..."
-      exit 0
-      ;;
-    *)
-      fail "Invalid choice '${choice}'. Please run again and choose between 0-5."
-      ;;
+    1) describe_and_confirm "repair"; op_repair ;;
+    2) describe_and_confirm "reinstall"; op_reinstall ;;
+    3) describe_and_confirm "delete"; op_delete ;;
+    4) describe_and_confirm "delete-all"; op_delete_all ;;
+    5) describe_and_confirm "update"; op_update ;;
+    0) exit 0 ;;
+    *) fail "Invalid choice." ;;
   esac
 }
 

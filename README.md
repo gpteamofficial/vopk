@@ -1,259 +1,167 @@
-# VOPK — One Package Command. Any Distro.
+<div align="center">
 
-> Stop relearning package managers.  
-> **VOPK gives you one command that works everywhere.**
+# 📦 VOPK
+### The Ultimate Package Manager Wrapper
+**One Command. Any Distro. Infinite Possibilities.**
 
-Switching between distros?  
-Managing multiple machines?  
-Tired of remembering `apt` vs `pacman` vs `dnf` syntax?
+[![Version](https://img.shields.io/badge/version-3.0.0_Jammy-blueviolet?style=flat-square)](https://github.com/vopkteam/vopk/releases)
+[![License](https://img.shields.io/badge/license-GPLv3-green?style=flat-square)](LICENSE)
+[![Bash](https://img.shields.io/badge/language-Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-pink?style=flat-square)](CONTRIBUTING.md)
 
-**VOPK fixes that.**
+[Installation](#-installation) • [Features](#-features) • [Documentation](https://vopkteam.github.io/vopk) • [Plugins](plugin/docs.md)
+
+</div>
+
+---
+
+## 🚀 Introduction
+
+**VOPK** (The Virtual One Package Kit) is a unified frontend that standardizes how you interact with software, regardless of the underlying operating system.
+
+It does not replace `apt`, `pacman`, or `dnf`. Instead, it provides a **clean, intelligent, and predictable CLI** that auto-detects your environment and translates your intent into the correct native commands.
+
+Whether you are managing a fleet of heterogeneous servers, hopping between Arch and Fedora, or orchestrating containers, VOPK ensures your muscle memory never needs to switch context.
+
+**New in v3.0.0 "Jammy":** AI-powered suggestions, system benchmarking, plugin architecture, and transactional rollbacks.
+
+---
+
+## ⚡ Why VOPK?
+
+The Linux ecosystem is fragmented. Installing a package looks different everywhere:
+
+* **Debian:** `apt install -y pkg`
+* **Arch:** `pacman -S --noconfirm pkg`
+* **Fedora:** `dnf install -y pkg`
+* **Alpine:** `apk add pkg`
+* **macOS:** `brew install pkg`
+
+**With VOPK, it is always:**
 
 ```bash
-# Debian, Arch, Fedora, Alpine, Void, Gentoo, macOS, BSD…
 vopk install neovim
-vopk remove firefox
-vopk update
 ```
 
-Same commands.  
-Same behavior.  
-No mental context switching.
+### The VOPK Advantage
+* **Zero Dependencies:** A single, portable Bash script.
+* **Context Aware:** Knows the difference between a system package, a flatpak, or an npm module.
+* **Safe by Design:** Includes dry-runs, snapshots, and rollbacks.
+* **Developer Ready:** Built-in benchmarking, auditing, and development environment setup.
 
 ---
 
-## 🤔 What is VOPK?
+## ✨ Key Features
 
-**VOPK** is a **unified package manager frontend**.
+### 🛡️ Universal Compatibility
+Supports **50+ package managers** across **20+ distributions**.
+* **System:** `apt`, `pacman`, `dnf`, `zypper`, `apk`, `xbps`, `emerge`, `nix`...
+* **Language:** `npm`, `pip`, `cargo`, `go`, `gem`, `composer`, `maven`...
+* **Universal:** `flatpak`, `snap`, `appimage`, `homebrew`.
+* **Cloud & Container:** `docker`, `kubectl`, `helm`, `aws-cli`.
 
-It does **not** replace your system package manager.  
-It **wraps it** with a clean, predictable CLI that works the same everywhere.
+### 🧠 AI-Powered Intelligence
+VOPK 3.0 doesn't just run commands; it assists you.
+* **Smart Suggestions:** "Installing `docker`? You might also need `docker-compose`."
+* **Conflict Detection:** Warns you before you break your system.
+* **Auto-Fix:** The `vopk doctor` command uses heuristics to analyze and repair broken dependencies, DNS issues, and permissions.
 
-Think of it as:
+### 🎨 Beautiful & Customizable
+* **Theming:** Built-in themes (Dracula, Nord, Solarized, Monokai).
+* **Animations:** Smooth, modern CLI experience with progress bars and spinners.
+* **Rich Output:** Clear, color-coded logging (Success, Info, Warning, Error).
 
-> *“One interface on top of every package manager.”*
-
----
-
-## 👤 Who is this for?
-
-VOPK is for you if you:
-
-- ✔ Use **multiple Linux distros**
-- ✔ Hop between **Arch / Debian / Fedora / Alpine**
-- ✔ Manage **servers, containers, VMs**
-- ✔ Work across **Linux / macOS / BSD**
-- ✔ Are a **beginner** confused by package managers
-- ✔ Just want things to **work the same everywhere**
-
-If you only ever use one distro forever — you probably don’t need VOPK.  
-If you touch more than one system — **you’ll feel it immediately**.
-
----
-
-## 😖 The Problem
-
-Every distro reinvents package management:
-
-- `apt` on Debian / Ubuntu
-- `pacman` on Arch
-- `dnf` on Fedora
-- `zypper` on openSUSE
-- `apk` on Alpine
-- `xbps` on Void
-- `emerge` on Gentoo
-
-Same actions.  
-Different syntax.  
-Different flags.  
-Different habits.
-
-Your brain pays the price.
+### 🔌 Extensible Plugin System
+Need more power? Drop a script into `~/.config/vopk/plugins`.
+* Create custom subcommands.
+* Hook into the install/remove lifecycle.
+* Access VOPK's core API for UI and logging.
 
 ---
 
-## ✅ The Solution
+## 📥 Installation
 
-**VOPK gives you one mental model.**
+### Quick Start (Recommended)
+Installs the latest stable version (3.0.0) to your system.
 
 ```bash
-vopk install htop
-vopk remove nginx
-vopk update
-vopk upgrade
+bash <(curl -fsSL [https://raw.githubusercontent.com/vopkteam/vopk/main/install.sh](https://raw.githubusercontent.com/vopkteam/vopk/main/install.sh))
 ```
 
-That’s it.
-
-Behind the scenes:
-- On Debian → uses `apt`
-- On Arch → uses `pacman`
-- On Fedora → uses `dnf`
-- On BSD → uses `pkg`
-- On macOS → uses `brew`
-
-You don’t care.  
-VOPK handles it.
-
----
-
-## ✨ Why people like VOPK
-
-- ✅ **Same CLI everywhere**
-- ✅ **Automatic backend detection**
-- ✅ **Beginner-friendly output**
-- ✅ **Safe defaults**
-- ✅ **Dry-run mode that actually behaves**
-- ✅ **Works on Linux, macOS, and BSD**
-- ✅ **Single Bash script — no dependencies**
-- ✅ **Does not hide backend errors**
-- ✅ **Transparent and predictable**
-
-No magic.  
-No abstraction leaks.  
-No surprises.
-
----
-
-## 📦 Supported Backends
-
-| Backend | Platforms |
-|------|---------|
-| `apt / apt-get` | Debian, Ubuntu, Mint, PopOS, Kali |
-| `pacman` | Arch, Manjaro, Endeavour |
-| `dnf` | Fedora |
-| `yum` | RHEL / CentOS (legacy) |
-| `zypper` | openSUSE |
-| `apk` | Alpine |
-| `xbps-install` | Void |
-| `emerge` | Gentoo |
-| `brew` | macOS (Homebrew) |
-| `pkg` | FreeBSD |
-| `pkgin / pkg_add` | NetBSD / OpenBSD |
-| `dpkg` | Debian systems without apt |
-| `vmpkg` | Optional fallback backend |
-
-VOPK automatically selects the correct backend.
-
----
-
-## 🚀 Installation
-
-### One-liner (recommended)
-
+### Manual Installation
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/installscript.sh)
+git clone [https://github.com/vopkteam/vopk.git](https://github.com/vopkteam/vopk.git)
+cd vopk
+sudo cp vopk /usr/local/bin/
+sudo chmod +x /usr/local/bin/vopk
 ```
 
-### Without root (alternative)
+---
 
+## 🛠️ Usage Guide
+
+### Essentials
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/installscript.sh | sudo bash -s -- -y
+vopk update                # Update repo lists
+vopk upgrade               # Upgrade all packages
+vopk install <package>     # Smart install (checks repos, snaps, flatpaks)
+vopk remove <package>      # Remove package
+vopk clean --all           # Deep clean cache and temp files
 ```
 
----
-
-## 🧠 Basic Usage
-
+### Advanced Operations (v3.0)
 ```bash
-vopk update
-vopk upgrade
-vopk install neovim
-vopk remove firefox
-vopk search docker
-vopk show git
+vopk doctor                # diagnose and fix system health
+vopk benchmark             # Run CPU, Disk, and Network benchmarks
+vopk snapshot              # Create a system restore point
+vopk rollback              # Revert to previous state
+vopk optimize              # Optimize DBs, trim SSDs, clear caches
 ```
 
-### Short aliases (optional)
+### Configuration
+VOPK supports `YAML`, `JSON`, `TOML`, and `.conf`.
+Edit your preferences in `~/.config/vopk/config.yaml`:
 
-```bash
-vopk i  neovim
-vopk rm firefox
-vopk up
-vopk fu
-vopk s  nginx
+```yaml
+core:
+  theme: "dracula"
+  animations: true
+  ai_suggestions: true
+  security_scan: true
 ```
 
 ---
 
-## 🔍 Dry-run mode (safe preview)
+## 📊 Supported Backends Overview
 
-```bash
-vopk install docker --dry-run
-```
-
-- No changes
-- No prompts
-- No surprises
-
----
-
-## 🛠 Power-user mode (raw backend access)
-
-```bash
-vopk backend install -y htop
-vopk script-v -Syu
-```
-
-You get **one entry point**, but **full control** when you need it.
+| Category | Supported Tools |
+| :--- | :--- |
+| **Linux Distros** | Debian, Ubuntu, Arch, Fedora, CentOS, OpenSUSE, Alpine, Void, Gentoo, NixOS |
+| **Unix-like** | macOS (Homebrew), FreeBSD, OpenBSD, NetBSD |
+| **Universal** | Flatpak, Snap, AppImage, Homebrew (Linux) |
+| **Languages** | Python (pip/poetry), Node (npm/yarn/pnpm), Rust (cargo), Go, PHP (composer), Java (mvn/gradle) |
+| **DevOps** | Docker, Podman, AWS, Azure, Google Cloud, Kubernetes (k8s/helm), Terraform |
+| **Gaming** | Steam, Lutris, Wine, Proton |
 
 ---
 
-## 🧰 Extra Helpers (Optional)
+## 🤝 Community & Contributing
 
-```bash
-vopk doctor
-vopk sys-info
-vopk kernel
-vopk disk
-vopk mem
-vopk fix-dns
-vopk install-dev-kit
-```
+VOPK is built by the community, for the community. We believe in tools that respect the user's intelligence while automating the drudgery.
 
-Useful on minimal systems, containers, or fresh installs.
+1.  **Star the repo** ⭐️ to show support!
+2.  **Report Issues:** Found a bug? Open an issue on GitHub.
+3.  **Submit PRs:** We love contributions! Check out `CONTRIBUTING.md`.
+
+### License
+VOPK is open-source software licensed under the **GPL-3.0 License**.
 
 ---
 
-## 🧱 Design Philosophy
+<div align="center">
 
-- **Unified** — one CLI everywhere  
-- **Transparent** — never hides what backend does  
-- **Safe** — conservative defaults  
-- **Predictable** — no distro-specific surprises  
-- **Human-friendly** — readable output, sane behavior  
+**Happy Packaging! 📦**
+<br>
+<i>Crafted with ❤️ by the VOPK Team</i>
 
-VOPK treats you like someone who wants control — not babysitting.
-
----
-
-## 🧪 What VOPK is NOT
-
-- ❌ Not a new package format
-- ❌ Not a replacement for native package managers
-- ❌ Not magic
-- ❌ Not a dependency resolver
-
-It’s a **frontend**.  
-A good one.
-
----
-
-## 💚 Project Info
-
-- Developed by **GP Team** with ❤
-- Current stable series: **1.x**
-- License: **GPL-3.0**
-
----
-
-## ⭐ Like it?
-
-- ⭐ Star the repo  
-- 🐛 Open issues  
-- 📣 Share it  
-- 📦 Package it for your distro  
-
-If VOPK saved you mental energy — it did its job.
-
-Happy packaging :)
+</div>

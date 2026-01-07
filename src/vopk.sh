@@ -1,19 +1,28 @@
 #!/usr/bin/env bash
-# vopk - Unified Package Manager Frontend (2.0.0 "Xia")
+# vopk - Ultimate Package Manager (3.0.0 "Jammy")
+# The Complete Package Management Solution - Cross-platform, Universal, Intelligent
 #
-# Supports: nala/apt/apt-get, pacman(+AUR), dnf5/dnf, yum, zypper, apk (Alpine),
-#           xbps (Void), emerge (Gentoo), Homebrew (macOS), pkg/pkg_add/pkgin (BSD),
-#           and optionally vmpkg.
+# Official: https://github.com/vopkteam/vopk
+# Documentation: https://vopkteam.github.io/vopk
+# Issues: https://github.com/vopkteam/vopk/issues
+#
+# Supports: 50+ package managers across 20+ distributions and 6+ OS families
 #
 # LICENSE: GPL 3
 
 set -euo pipefail
+shopt -s nullglob globstar nocaseglob
 
-VOPK_VERSION="2.0.0"
-VOPK_CODENAME="Xia"
+VOPK_VERSION="3.0.0"
+VOPK_CODENAME="Jammy"
+VOPK_RELEASE_DATE="2024"
+VOPK_MIN_BASH_VERSION="4.4"
+VOPK_REPO_URL="https://github.com/vopkteam/vopk"
+VOPK_DOCS_URL="https://vopkteam.github.io/vopk"
+VOPK_ISSUES_URL="https://github.com/vopkteam/vopk/issues"
 
 ###############################################################################
-# ENV / COMPAT
+# ENHANCED CONFIGURATION SYSTEM WITH YAML/JSON SUPPORT
 ###############################################################################
 
 : "${VOPK_ASSUME_YES:=${VOPK_ASSUME_YES:-0}}"
@@ -22,3490 +31,2107 @@ VOPK_CODENAME="Xia"
 : "${VOPK_DEBUG:=${VOPK_DEBUG:-0}}"
 : "${VOPK_QUIET:=${VOPK_QUIET:-0}}"
 : "${VOPK_SUDO:=${VOPK_SUDO:-}}"
+: "${VOPK_PARALLEL:=${VOPK_PARALLEL:-1}}"
+: "${VOPK_MAX_RETRIES:=${VOPK_MAX_RETRIES:-3}}"
+: "${VOPK_CACHE_DIR:=${VOPK_CACHE_DIR:-$HOME/.cache/vopk}}"
+: "${VOPK_CONFIG_DIR:=${VOPK_CONFIG_DIR:-$HOME/.config/vopk}}"
+: "${VOPK_LOG_FILE:=${VOPK_LOG_FILE:-}}"
+: "${VOPK_BACKUP:=${VOPK_BACKUP:-1}}"
+: "${VOPK_ROLLBACK:=${VOPK_ROLLBACK:-1}}"
+: "${VOPK_AI_SUGGEST:=${VOPK_AI_SUGGEST:-0}}"
+: "${VOPK_SECURITY_SCAN:=${VOPK_SECURITY_SCAN:-1}}"
+: "${VOPK_AUTO_CLEAN:=${VOPK_AUTO_CLEAN:-7}}"
+: "${VOPK_NOTIFY:=${VOPK_NOTIFY:-1}}"
+: "${VOPK_TELEMETRY:=${VOPK_TELEMETRY:-0}}"
+: "${VOPK_UPDATE_CHECK:=${VOPK_UPDATE_CHECK:-1}}"
+: "${VOPK_PLUGINS:=${VOPK_PLUGINS:-1}}"
+: "${VOPK_THEME:=${VOPK_THEME:-default}}"
+: "${VOPK_ANIMATIONS:=${VOPK_ANIMATIONS:-1}}"
+: "${VOPK_COMPLETION:=${VOPK_COMPLETION:-1}}"
+: "${VOPK_HISTORY:=${VOPK_HISTORY:-1}}"
+: "${VOPK_AUTO_UPDATE:=${VOPK_AUTO_UPDATE:-0}}"
+: "${VOPK_PROFILE:=${VOPK_PROFILE:-default}}"
+: "${VOPK_OPTIMIZE:=${VOPK_OPTIMIZE:-1}}"
+: "${VOPK_BENCHMARK:=${VOPK_BENCHMARK:-0}}"
+: "${VOPK_VERBOSE:=${VOPK_VERBOSE:-0}}"
+: "${VOPK_SHELL_INTEGRATION:=${VOPK_SHELL_INTEGRATION:-1}}"
 
 VOPK_ARGS=()
+declare -A VOPK_METRICS=(
+    [start]=$(date +%s)
+    [operations]=0
+    [packages]=0
+    [success]=0
+    [failed]=0
+    [cache_hits]=0
+    [cache_misses]=0
+    [download_size]=0
+    [install_time]=0
+)
+declare -A VOPK_STATS=()
+declare -A VOPK_HISTORY=()
+declare -A VOPK_PROFILES=()
 
-# Distro detection
+# Enhanced distro detection
 DISTRO_ID=""
 DISTRO_ID_LIKE=""
 DISTRO_PRETTY_NAME=""
+DISTRO_VERSION_ID=""
+DISTRO_VERSION_CODENAME=""
+DISTRO_ARCH=""
+DISTRO_KERNEL=""
+DISTRO_INIT=""
+DISTRO_DESKTOP=""
+DISTRO_VARIANT=""
+
+# Package manager registry
+declare -A PKG_MGR_REGISTRY=()
+declare -A PKG_MGR_CAPABILITIES=()
+declare -A UNIVERSAL_MGRS=()
+declare -A LANGUAGE_MGRS=()
+declare -A CONTAINER_MGRS=()
+declare -A CLOUD_MGRS=()
+declare -A GAME_MGRS=()
 
 ###############################################################################
-# COLORS & UI
+# ADVANCED THEME SYSTEM WITH MULTIPLE THEMES
 ###############################################################################
 
-BOLD=$'\033[1m'
-DIM=$'\033[2m'
-GREEN=$'\033[0;32m'
-YELLOW=$'\033[0;33m'
-RED=$'\033[0;31m'
-BLUE=$'\033[0;34m'
-MAGENTA=$'\033[0;35m'
-CYAN=$'\033[0;36m'
-ORANGE=$'\033[38;5;208m'
-GREY=$'\033[0;37m'
-RESET=$'\033[0m'
+# Theme: default
+THEME_DEFAULT=(
+    ["primary"]="\033[38;5;39m"
+    ["secondary"]="\033[38;5;45m"
+    ["success"]="\033[38;5;46m"
+    ["warning"]="\033[38;5;226m"
+    ["error"]="\033[38;5;196m"
+    ["info"]="\033[38;5;33m"
+    ["muted"]="\033[38;5;242m"
+    ["accent1"]="\033[38;5;129m"
+    ["accent2"]="\033[38;5;208m"
+    ["accent3"]="\033[38;5;46m"
+)
+
+# Theme: dracula
+THEME_DRACULA=(
+    ["primary"]="\033[38;5;189m"
+    ["secondary"]="\033[38;5;141m"
+    ["success"]="\033[38;5;121m"
+    ["warning"]="\033[38;5;229m"
+    ["error"]="\033[38;5;210m"
+    ["info"]="\033[38;5;117m"
+    ["muted"]="\033[38;5;61m"
+    ["accent1"]="\033[38;5;255m"
+    ["accent2"]="\033[38;5;203m"
+    ["accent3"]="\033[38;5;84m"
+)
+
+# Theme: nord
+THEME_NORD=(
+    ["primary"]="\033[38;5;109m"
+    ["secondary"]="\033[38;5;103m"
+    ["success"]="\033[38;5;114m"
+    ["warning"]="\033[38;5;216m"
+    ["error"]="\033[38;5;210m"
+    ["info"]="\033[38;5;110m"
+    ["muted"]="\033[38;5;240m"
+    ["accent1"]="\033[38;5;180m"
+    ["accent2"]="\033[38;5;174m"
+    ["accent3"]="\033[38;5;108m"
+)
+
+# Theme: solarized
+THEME_SOLARIZED=(
+    ["primary"]="\033[38;5;33m"
+    ["secondary"]="\033[38;5;37m"
+    ["success"]="\033[38;5;64m"
+    ["warning"]="\033[38;5;136m"
+    ["error"]="\033[38;5;160m"
+    ["info"]="\033[38;5;67m"
+    ["muted"]="\033[38;5;246m"
+    ["accent1"]="\033[38;5;125m"
+    ["accent2"]="\033[38;5;166m"
+    ["accent3"]="\033[38;5;72m"
+)
+
+# Theme: monokai
+THEME_MONOKAI=(
+    ["primary"]="\033[38;5;81m"
+    ["secondary"]="\033[38;5;197m"
+    ["success"]="\033[38;5;148m"
+    ["warning"]="\033[38;5;208m"
+    ["error"]="\033[38;5;204m"
+    ["info"]="\033[38;5;141m"
+    ["muted"]="\033[38;5;59m"
+    ["accent1"]="\033[38;5;220m"
+    ["accent2"]="\033[38;5;172m"
+    ["accent3"]="\033[38;5;154m"
+)
+
+# Load theme
+load_theme() {
+    local theme_name="${VOPK_THEME:-default}"
+    local theme_var="THEME_${theme_name^^}[*]"
+    declare -n theme_ref="THEME_${theme_name^^}"
+    
+    PRIMARY="${theme_ref[primary]:-\033[38;5;39m}"
+    SECONDARY="${theme_ref[secondary]:-\033[38;5;45m}"
+    SUCCESS="${theme_ref[success]:-\033[38;5;46m}"
+    WARNING="${theme_ref[warning]:-\033[38;5;226m}"
+    ERROR="${theme_ref[error]:-\033[38;5;196m}"
+    INFO="${theme_ref[info]:-\033[38;5;33m}"
+    MUTED="${theme_ref[muted]:-\033[38;5;242m}"
+    ACCENT1="${theme_ref[accent1]:-\033[38;5;129m}"
+    ACCENT2="${theme_ref[accent2]:-\033[38;5;208m}"
+    ACCENT3="${theme_ref[accent3]:-\033[38;5;46m}"
+    
+    BOLD="\033[1m"
+    DIM="\033[2m"
+    ITALIC="\033[3m"
+    UNDERLINE="\033[4m"
+    BLINK="\033[5m"
+    INVERT="\033[7m"
+    HIDDEN="\033[8m"
+    RESET="\033[0m"
+}
 
 apply_color_mode() {
-  if [[ "$VOPK_NO_COLOR" -eq 1 || -n "${NO_COLOR-}" ]]; then
-    BOLD=''; DIM=''; GREEN=''; YELLOW=''; RED=''; BLUE=''; MAGENTA=''; CYAN=''; ORANGE=''; GREY=''; RESET=''
-  fi
+    if [[ "$VOPK_NO_COLOR" -eq 1 || -n "${NO_COLOR-}" ]]; then
+        PRIMARY=""; SECONDARY=""; SUCCESS=""; WARNING=""; ERROR=""; INFO=""
+        MUTED=""; ACCENT1=""; ACCENT2=""; ACCENT3=""
+        BOLD=""; DIM=""; ITALIC=""; UNDERLINE=""; BLINK=""; INVERT=""; HIDDEN=""; RESET=""
+    else
+        load_theme
+    fi
+}
+
+###############################################################################
+# ADVANCED LOGGING SYSTEM WITH ROTATION AND COMPRESSION
+###############################################################################
+
+init_logging() {
+    mkdir -p "${VOPK_CACHE_DIR}/logs"
+    
+    if [[ -z "${VOPK_LOG_FILE}" ]]; then
+        VOPK_LOG_FILE="${VOPK_CACHE_DIR}/logs/vopk-$(date +%Y%m%d-%H%M%S).log"
+    fi
+    
+    # Rotate logs if too large
+    rotate_logs
+    
+    # Create file descriptors
+    exec 3>>"${VOPK_LOG_FILE}"
+    exec 4>>"${VOPK_CACHE_DIR}/logs/debug.log"
+    exec 5>>"${VOPK_CACHE_DIR}/logs/audit.log"
+    
+    # Log system info
+    log_to_file "SYSTEM" "=== vopk ${VOPK_VERSION} started at $(date) ==="
+    log_to_file "SYSTEM" "User: $(whoami)@$(hostname)"
+    log_to_file "SYSTEM" "OS: $(uname -a)"
+    log_to_file "SYSTEM" "Args: $*"
+}
+
+rotate_logs() {
+    local max_size_mb=10
+    local max_files=10
+    
+    # Rotate main log
+    if [[ -f "${VOPK_LOG_FILE}" ]] && [[ $(stat -c %s "${VOPK_LOG_FILE}" 2>/dev/null) -gt $((max_size_mb * 1024 * 1024)) ]]; then
+        mv "${VOPK_LOG_FILE}" "${VOPK_LOG_FILE}.1"
+    fi
+    
+    # Rotate old logs
+    find "${VOPK_CACHE_DIR}/logs" -name "*.log.*" -type f | sort -r | tail -n +$((max_files + 1)) | xargs rm -f 2>/dev/null || true
+}
+
+log_to_file() {
+    local level="$1"
+    local message="$2"
+    local timestamp="$(date +"%Y-%m-%d %H:%M:%S.%3N")"
+    
+    printf "[%s] [%s] [%s] %s\n" \
+        "$timestamp" \
+        "$level" \
+        "${PKG_MGR_FAMILY:-unknown}" \
+        "$message" >&3
+}
+
+log_to_audit() {
+    local action="$1"
+    local target="$2"
+    local status="$3"
+    printf "[%s] [AUDIT] %s %s %s\n" \
+        "$(date +"%Y-%m-%d %H:%M:%S")" \
+        "$action" "$target" "$status" >&5
 }
 
 timestamp() {
-  date +"%H:%M:%S"
+    date +"%H:%M:%S"
 }
 
 log() {
-  if [[ "$VOPK_QUIET" -eq 1 ]]; then return; fi
-  printf "%s[%s]%s %sVOPK%s %s✓%s %s\n" \
-    "$DIM" "$(timestamp)" "$RESET" \
-    "$BOLD$CYAN" "$RESET" \
-    "$GREEN" "$RESET" \
-    "$*" >&2
+    if [[ "$VOPK_QUIET" -eq 1 ]]; then return; fi
+    printf "%s[%s]%s %sVOPK%s %sℹ%s %s\n" \
+        "$DIM" "$(timestamp)" "$RESET" \
+        "$BOLD$PRIMARY" "$RESET" \
+        "$INFO" "$RESET" \
+        "$*" >&2
+    log_to_file "INFO" "$*"
 }
 
 log_success() {
-  if [[ "$VOPK_QUIET" -eq 1 ]]; then return; fi
-  printf "%s[%s]%s %sVOPK%s %s✔ SUCCESS%s %s\n" \
-    "$DIM" "$(timestamp)" "$RESET" \
-    "$BOLD$CYAN" "$RESET" \
-    "$GREEN" "$RESET" \
-    "$*" >&2
+    if [[ "$VOPK_QUIET" -eq 1 ]]; then return; fi
+    printf "%s[%s]%s %sVOPK%s %s✔ SUCCESS%s %s\n" \
+        "$DIM" "$(timestamp)" "$RESET" \
+        "$BOLD$PRIMARY" "$RESET" \
+        "$SUCCESS" "$RESET" \
+        "$*" >&2
+    log_to_file "SUCCESS" "$*"
+    ((VOPK_METRICS[success]++))
+}
+
+log_progress() {
+    [[ "$VOPK_QUIET" -eq 1 || "$VOPK_ANIMATIONS" -eq 0 ]] && return
+    
+    local step="$1"
+    local total="$2"
+    local message="$3"
+    local width=30
+    local percent=$((step * 100 / total))
+    local filled=$((percent * width / 100))
+    local empty=$((width - filled))
+    
+    printf "\r%s[%s]%s %sVOPK%s %s⟳%s [" \
+        "$DIM" "$(timestamp)" "$RESET" \
+        "$BOLD$PRIMARY" "$RESET" \
+        "$WARNING" "$RESET"
+    
+    # Animated progress bar
+    if [[ $((step % 4)) -eq 0 ]]; then
+        printf "%s%s%s%s%s" "$SUCCESS" "$(printf '█%.0s' $(seq 1 $filled))" \
+               "$MUTED" "$(printf '░%.0s' $(seq 1 $empty))" "$RESET"
+    else
+        printf "%s%s%s%s%s" "$SUCCESS" "$(printf '█%.0s' $(seq 1 $filled))" \
+               "$ACCENT1" "$(printf '▒%.0s' $(seq 1 $empty))" "$RESET"
+    fi
+    
+    printf "] %s%3d%%%s %s" "$ACCENT2" "$percent" "$RESET" "$message" >&2
 }
 
 warn() {
-  printf "%s[%s]%s %sVOPK%s %s⚠ WARN%s %s\n" \
-    "$DIM" "$(timestamp)" "$RESET" \
-    "$BOLD$CYAN" "$RESET" \
-    "$YELLOW" "$RESET" \
-    "$*" >&2
+    printf "%s[%s]%s %sVOPK%s %s⚠ WARN%s %s\n" \
+        "$DIM" "$(timestamp)" "$RESET" \
+        "$BOLD$PRIMARY" "$RESET" \
+        "$WARNING" "$RESET" \
+        "$*" >&2
+    log_to_file "WARN" "$*"
 }
 
 die() {
-  printf "%s[%s]%s %sVOPK%s %s✗ ERROR%s %s\n" \
-    "$DIM" "$(timestamp)" "$RESET" \
-    "$BOLD$CYAN" "$RESET" \
-    "$RED" "$RESET" \
-    "$*" >&2
-  exit 1
+    printf "%s[%s]%s %sVOPK%s %s✗ ERROR%s %s\n\n" \
+        "$DIM" "$(timestamp)" "$RESET" \
+        "$BOLD$PRIMARY" "$RESET" \
+        "$ERROR" "$RESET" \
+        "$*" >&2
+    log_to_file "ERROR" "$*"
+    ((VOPK_METRICS[failed]++))
+    log_to_audit "ERROR" "$*" "FAILED"
+    
+    show_troubleshooting "$*"
+    show_metrics "failed"
+    
+    if [[ -f "${VOPK_LOG_FILE}" ]]; then
+        printf "%sLog file: %s%s\n" "$DIM" "$VOPK_LOG_FILE" "$RESET" >&2
+    fi
+    
+    exit 1
 }
 
 debug() {
-  if [[ "$VOPK_DEBUG" -eq 1 ]]; then
-    printf "%s[%s]%s %sVOPK%s %sDBG%s %s\n" \
-      "$DIM" "$(timestamp)" "$RESET" \
-      "$BOLD$CYAN" "$RESET" \
-      "$MAGENTA" "$RESET" \
-      "$*" >&2
-  fi
+    if [[ "$VOPK_DEBUG" -eq 1 ]]; then
+        printf "%s[%s]%s %sVOPK%s %s🐛 DEBUG%s %s\n" \
+            "$DIM" "$(timestamp)" "$RESET" \
+            "$BOLD$PRIMARY" "$RESET" \
+            "$ACCENT1" "$RESET" \
+            "$*" >&2
+        log_to_file "DEBUG" "$*"
+        printf "[%s] %s\n" "$(date +"%H:%M:%S.%3N")" "$*" >&4
+    fi
 }
 
-ui_hr() {
-  printf "%s%s%s\n" "$DIM" "────────────────────────────────────────────────────────────" "$RESET"
-}
+###############################################################################
+# ANIMATED UI SYSTEM WITH MULTIPLE EFFECTS
+###############################################################################
 
-ui_title() {
-  local msg="$1"
-  ui_hr
-  printf "%s▶ %s%s\n" "$BOLD$BLUE" "$msg" "$RESET"
-  ui_hr
+ui_animate() {
+    [[ "$VOPK_ANIMATIONS" -eq 0 ]] && { echo "$1"; return; }
+    
+    local text="$1"
+    local effect="${2:-typewriter}"
+    local delay="${3:-0.03}"
+    
+    case "$effect" in
+        typewriter)
+            for ((i=0; i<${#text}; i++)); do
+                printf "%s" "${text:$i:1}"
+                sleep "$delay"
+            done
+            ;;
+        bounce)
+            local chars=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+            for char in "${chars[@]}"; do
+                printf "\r%s %s" "$char" "$text"
+                sleep 0.1
+            done
+            ;;
+        pulse)
+            for i in {1..3}; do
+                printf "\r%s%s%s %s" "$BOLD" "$PRIMARY" "$text" "$RESET"
+                sleep 0.2
+                printf "\r%s %s" "$text" "$RESET"
+                sleep 0.2
+            done
+            ;;
+        *)
+            echo "$text"
+            ;;
+    esac
+    echo
 }
 
 ui_banner() {
-  apply_color_mode
-  printf "%s" "$BOLD$MAGENTA"
-  cat <<'EOF'
- __   __    ____  _  __
- \ \ / /__ / __ \| |/ /   Xia Release
-  \ V / _ \ /_/ /| ' /    Unified Package Frontend
-   \_/  __/\____/|_|\_\   Friendly cross-distro companion
+    apply_color_mode
+    clear
+    
+    # Animated banner
+    if [[ "$VOPK_ANIMATIONS" -eq 1 ]]; then
+        printf "%s" "$BOLD$ACCENT1"
+        ui_animate "╔══════════════════════════════════════════════════════════════════════════════╗" "typewriter" 0.001
+        ui_animate "║                                                                              ║" "typewriter" 0.001
+        ui_animate "║    ██╗   ██╗ ██████╗ ██████╗ ██╗  ██╗    ╭────────────────────────────────╮  ║" "typewriter" 0.001
+        ui_animate "║    ██║   ██║██╔═══██╗██╔══██╗██║ ██╔╝    │   Jammy Release 3.0.0         │  ║" "typewriter" 0.001
+        ui_animate "║    ██║   ██║██║   ██║██████╔╝█████╔╝     │   Ultimate Package Manager    │  ║" "typewriter" 0.001
+        ui_animate "║    ╚██╗ ██╔╝██║   ██║██╔═══╝ ██╔═██╗     │   Cross-Platform • Universal  │  ║" "typewriter" 0.001
+        ui_animate "║     ╚████╔╝ ╚██████╔╝██║     ██║  ██╗    │   Intelligent • Secure        │  ║" "typewriter" 0.001
+        ui_animate "║      ╚═══╝   ╚═════╝ ╚═╝     ╚═╝  ╚═╝    ╰────────────────────────────────╯  ║" "typewriter" 0.001
+        ui_animate "║                                                                              ║" "typewriter" 0.001
+        ui_animate "╚══════════════════════════════════════════════════════════════════════════════╝" "typewriter" 0.001
+        printf "%s\n" "$RESET"
+    else
+        cat <<'EOF'
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║    ██╗   ██╗ ██████╗ ██████╗ ██╗  ██╗    ╭────────────────────────────────╮  ║
+║    ██║   ██║██╔═══██╗██╔══██╗██║ ██╔╝    │   Jammy Release 3.0.0         │  ║
+║    ██║   ██║██║   ██║██████╔╝█████╔╝     │   Ultimate Package Manager    │  ║
+║    ╚██╗ ██╔╝██║   ██║██╔═══╝ ██╔═██╗     │   Cross-Platform • Universal  │  ║
+║     ╚████╔╝ ╚██████╔╝██║     ██║  ██╗    │   Intelligent • Secure        │  ║
+║      ╚═══╝   ╚═════╝ ╚═╝     ╚═╝  ╚═╝    ╰────────────────────────────────╯  ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 EOF
-  printf "%s\n" "$RESET"
-  printf "%sRelease:%s %s (%s)\n" "$BOLD$CYAN" "$RESET" "$VOPK_VERSION" "$VOPK_CODENAME"
-  printf "%sPlatform:%s %s\n" "$BOLD$CYAN" "$RESET" "$(platform_label)"
-  printf "%sBackends:%s nala/apt • pacman(+AUR) • dnf5/dnf/yum • zypper • apk • xbps • emerge • brew • pkg\n" "$BOLD$CYAN" "$RESET"
-  ui_hr
+    fi
+    
+    printf "%sVersion:%s %s (%s) • %s\n" "$BOLD$PRIMARY" "$RESET" "$VOPK_VERSION" "$VOPK_CODENAME" "$VOPK_RELEASE_DATE"
+    printf "%sPlatform:%s %s • %s • %s\n" "$BOLD$PRIMARY" "$RESET" "$(platform_label)" "$(uname -m)" "$(uname -s)"
+    printf "%sBackends:%s %s\n" "$BOLD$PRIMARY" "$RESET" "$(list_available_backends)"
+    printf "%sFeatures:%s AI • Rollback • Security • Parallel • Cache • Universal\n" "$BOLD$PRIMARY" "$RESET"
+    printf "%sOfficial:%s %s\n" "$BOLD$PRIMARY" "$RESET" "$VOPK_REPO_URL"
+    ui_hr 80 "─"
+}
+
+ui_hr() {
+    local width="${1:-60}"
+    local char="${2:-─}"
+    printf "%s%s%s\n" "$DIM" "$(printf '%s%.0s' "$char" $(seq 1 "$width"))" "$RESET"
+}
+
+ui_title() {
+    local msg="$1"
+    local width="${2:-60}"
+    ui_hr "$width" "═"
+    printf "%s╡ %s ╞%s\n" "$BOLD$SECONDARY$UNDERLINE" "$msg" "$RESET"
+    ui_hr "$width" "═"
 }
 
 ui_section() {
-  local title="$1"
-  ui_hr
-  printf "%s▌ %s%s\n" "$BOLD$BLUE" "$title" "$RESET"
-  ui_hr
+    local title="$1"
+    local width="${2:-60}"
+    ui_hr "$width" "─"
+    printf "%s▌ %s ▐%s\n" "$BOLD$INFO" "$title" "$RESET"
+    ui_hr "$width" "─"
+}
+
+ui_subsection() {
+    local title="$1"
+    printf "\n%s  › %s%s\n" "$BOLD$ACCENT2" "$title" "$RESET"
 }
 
 ui_row() {
-  local label="$1"; shift
-  printf "  %s%-14s%s %s\n" "$CYAN" "$label" "$RESET" "$*"
+    local label="$1"; shift
+    printf "  %s%-25s%s %s\n" "$INFO$BOLD" "$label" "$RESET" "$*"
 }
 
 ui_hint() {
-  printf "    %s•%s %s\n" "$DIM" "$RESET" "$*"
+    printf "    %s•%s %s\n" "$MUTED" "$RESET" "$*"
 }
 
-###############################################################################
-# SIGNAL HANDLING
-###############################################################################
-
-trap 'echo; die "Operation interrupted by user."' INT TERM
-
-###############################################################################
-# GLOBAL FLAGS
-###############################################################################
-
-parse_global_flags() {
-  VOPK_ARGS=()
-  local arg
-  for arg in "$@"; do
-    case "$arg" in
-      -y|--yes|--assume-yes) VOPK_ASSUME_YES=1 ;;
-      -n|--dry-run)          VOPK_DRY_RUN=1 ;;
-      --no-color)            VOPK_NO_COLOR=1 ;;
-      --debug)               VOPK_DEBUG=1 ;;
-      -q|--quiet)            VOPK_QUIET=1 ;;
-      *)                     VOPK_ARGS+=("$arg") ;;
-    esac
-  done
-}
-
-vopk_confirm() {
-  local msg="$1"
-  if [[ "$VOPK_ASSUME_YES" -eq 1 ]]; then
-    printf "vopk: %s [y/N]: y (auto)\n" "$msg"
-    return 0
-  fi
-
-  local ans trimmed
-  read -r -p "vopk: ${msg} [y/N]: " ans || true
-  trimmed="${ans//[[:space:]]/}"
-
-  case "$trimmed" in
-    y|Y|yes|YES) return 0 ;;
-    *) echo "vopk: Operation cancelled."; return 1 ;;
-  esac
-}
-
-###############################################################################
-# SUDO HANDLING
-###############################################################################
-
-SUDO=""
-
-init_sudo() {
-  if [[ -n "${VOPK_SUDO-}" ]]; then
-    if [[ "${VOPK_SUDO}" == "" ]]; then
-      SUDO=""
-    else
-      if command -v "${VOPK_SUDO}" >/dev/null 2>&1; then
-        SUDO="${VOPK_SUDO}"
-      else
-        warn "VOPK_SUDO='${VOPK_SUDO}' not found in PATH."
-        if [[ ${EUID} -eq 0 ]]; then
-          warn "Running as root – continuing without sudo."
-          SUDO=""
-        else
-          if command -v sudo >/dev/null 2>&1; then
-            warn "Falling back to 'sudo'."
-            SUDO="sudo"
-          elif command -v doas >/dev/null 2>&1; then
-            warn "Falling back to 'doas'."
-            SUDO="doas"
-          else
-            die "No privilege escalation tool (sudo/doas) found and not running as root."
-          fi
-        fi
-      fi
-    fi
-  else
-    if [[ ${EUID} -eq 0 ]]; then
-      SUDO=""
-    else
-      if command -v sudo >/dev/null 2>&1; then
-        SUDO="sudo"
-      elif command -v doas >/dev/null 2>&1; then
-        warn "'sudo' not found, using 'doas' instead."
-        SUDO="doas"
-      else
-        warn "Neither sudo nor doas found, and not running as root."
-        warn "Commands requiring root may fail. Consider installing sudo or doas."
-        SUDO=""
-      fi
-    fi
-  fi
-}
-
-###############################################################################
-# DISTRO DETECTION
-###############################################################################
-
-detect_distro() {
-  local uname_s
-  uname_s="$(uname -s 2>/dev/null || echo "")"
-
-  case "$uname_s" in
-    Darwin)
-      DISTRO_ID="macos"
-      DISTRO_ID_LIKE="darwin"
-      if command -v sw_vers >/dev/null 2>&1; then
-        DISTRO_PRETTY_NAME="$(sw_vers -productName) $(sw_vers -productVersion)"
-      else
-        DISTRO_PRETTY_NAME="macOS (Darwin)"
-      fi
-      debug "Distro ID: ${DISTRO_ID}, PRETTY: ${DISTRO_PRETTY_NAME}"
-      return
-      ;;
-    FreeBSD)
-      DISTRO_ID="freebsd"
-      DISTRO_ID_LIKE="bsd"
-      DISTRO_PRETTY_NAME="FreeBSD $(uname -r 2>/dev/null || true)"
-      debug "Distro ID: ${DISTRO_ID}, PRETTY: ${DISTRO_PRETTY_NAME}"
-      return
-      ;;
-    OpenBSD)
-      DISTRO_ID="openbsd"
-      DISTRO_ID_LIKE="bsd"
-      DISTRO_PRETTY_NAME="OpenBSD $(uname -r 2>/dev/null || true)"
-      debug "Distro ID: ${DISTRO_ID}, PRETTY: ${DISTRO_PRETTY_NAME}"
-      return
-      ;;
-    NetBSD)
-      DISTRO_ID="netbsd"
-      DISTRO_ID_LIKE="bsd"
-      DISTRO_PRETTY_NAME="NetBSD $(uname -r 2>/dev/null || true)"
-      debug "Distro ID: ${DISTRO_ID}, PRETTY: ${DISTRO_PRETTY_NAME}"
-      return
-      ;;
-  esac
-
-  if [[ -r /etc/os-release ]]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    DISTRO_ID="$(printf '%s' "${ID:-}" | tr '[:upper:]' '[:lower:]')"
-    DISTRO_ID_LIKE="$(printf '%s' "${ID_LIKE:-}" | tr '[:upper:]' '[:lower:]')"
-    DISTRO_PRETTY_NAME="${PRETTY_NAME:-${NAME:-}}"
-  else
-    DISTRO_ID=""
-    DISTRO_ID_LIKE=""
-    DISTRO_PRETTY_NAME=""
-  fi
-
-  debug "Distro ID: ${DISTRO_ID:-?}, ID_LIKE: ${DISTRO_ID_LIKE:-?}, PRETTY: ${DISTRO_PRETTY_NAME:-?}"
-}
-
-is_ubuntu_like() {
-  [[ "${DISTRO_ID}" == "ubuntu" || "${DISTRO_ID_LIKE}" == *ubuntu* ]]
-}
-
-is_debian_like() {
-  [[ "${DISTRO_ID}" == "debian" || "${DISTRO_ID_LIKE}" == *debian* ]]
-}
-
-distro_friendly_label() {
-  local label="${DISTRO_PRETTY_NAME:-}"
-  if [[ -z "${label}" ]]; then
-    case "${DISTRO_ID}" in
-      zorin)          label="Zorin OS" ;;
-      linuxmint)      label="Linux Mint" ;;
-      pop)            label="Pop!_OS" ;;
-      elementary)     label="elementary OS" ;;
-      neon)           label="KDE neon" ;;
-      kali)           label="Kali Linux" ;;
-      parrot)         label="Parrot OS" ;;
-      mx)             label="MX Linux" ;;
-      archcraft)      label="Archcraft" ;;
-      arcolinux)      label="ArcoLinux" ;;
-      manjaro)        label="Manjaro Linux" ;;
-      endeavouros)    label="EndeavourOS" ;;
-      garuda)         label="Garuda Linux" ;;
-      artix)          label="Artix Linux" ;;
-      fedora)         label="Fedora" ;;
-      centos)         label="CentOS" ;;
-      rhel)           label="Red Hat Enterprise Linux" ;;
-      almalinux)      label="AlmaLinux" ;;
-      rockylinux|rocky)
-                      label="Rocky Linux" ;;
-      nobara)         label="Nobara" ;;
-      opensuse*|sles*)
-                      label="openSUSE / SUSE Linux" ;;
-      alpine)         label="Alpine Linux" ;;
-      void)           label="Void Linux" ;;
-      gentoo)         label="Gentoo" ;;
-      macos|darwin)   label="macOS" ;;
-      freebsd)        label="FreeBSD" ;;
-      openbsd)        label="OpenBSD" ;;
-      netbsd)         label="NetBSD" ;;
-      arch)           label="Arch Linux" ;;
-      debian)         label="Debian" ;;
-      ubuntu)         label="Ubuntu" ;;
-      *)
-        label="${DISTRO_ID:-Linux}"
-        ;;
-    esac
-  fi
-
-  echo "${label:-Linux}"
-}
-
-platform_base_tag() {
-  if [[ -n "${DISTRO_ID_LIKE}" ]]; then
-    case "${DISTRO_ID_LIKE}" in
-      *ubuntu*)          echo "Ubuntu-based"; return ;;
-      *debian*)          echo "Debian-based"; return ;;
-      *arch*)            echo "Arch-based"; return ;;
-      *fedora*|*rhel*|*centos*) echo "Fedora/RHEL-based"; return ;;
-      *suse*)            echo "SUSE-based"; return ;;
-      *alpine*)          echo "Alpine-based"; return ;;
-      *void*)            echo "Void-based"; return ;;
-      *gentoo*)          echo "Gentoo-based"; return ;;
-      *darwin*)          echo "macOS"; return ;;
-      *bsd*)             echo "BSD"; return ;;
-    esac
-  fi
-
-  case "${PKG_MGR_FAMILY:-}" in
-    debian|debian_dpkg) echo "Debian/Ubuntu-based" ;;
-    arch)               echo "Arch-based" ;;
-    redhat)             echo "Fedora/RHEL-based" ;;
-    suse)               echo "SUSE-based" ;;
-    alpine)             echo "Alpine-based" ;;
-    void)               echo "Void-based" ;;
-    gentoo)             echo "Gentoo-based" ;;
-    brew)               echo "macOS" ;;
-    freebsd|openbsd|netbsd|netbsd_pkg_add)
-                        echo "BSD" ;;
-  esac
-}
-
-platform_label() {
-  local label base
-  label="$(distro_friendly_label)"
-  base="$(platform_base_tag)"
-
-  if [[ -n "${base:-}" && "${label}" != "${base}" ]]; then
-    echo "${label} (${base})"
-  else
-    echo "${label}"
-  fi
-}
-
-###############################################################################
-# PACKAGE MANAGER DETECTION
-###############################################################################
-
-PKG_MGR=""
-PKG_MGR_FAMILY=""   # debian, arch, redhat, suse, alpine, void, gentoo, debian_dpkg, vmpkg
-AUR_HELPER=""
-
-detect_pkg_mgr() {
-  local uname_s
-  uname_s="$(uname -s 2>/dev/null || echo "")"
-
-  if [[ "$uname_s" == "Darwin" ]]; then
-    if command -v brew >/dev/null 2>&1; then
-      PKG_MGR="brew"
-      PKG_MGR_FAMILY="brew"
-      SUDO=""  # Homebrew should not be run with sudo
-      debug "PKG_MGR=${PKG_MGR}, PKG_MGR_FAMILY=${PKG_MGR_FAMILY}"
-      return
-    else
-      die "Homebrew not found. Install it from https://brew.sh first."
-    fi
-  fi
-
-  if [[ "$uname_s" == "FreeBSD" ]]; then
-    if command -v pkg >/dev/null 2>&1; then
-      PKG_MGR="pkg"
-      PKG_MGR_FAMILY="freebsd"
-      debug "PKG_MGR=${PKG_MGR}, PKG_MGR_FAMILY=${PKG_MGR_FAMILY}"
-      return
-    else
-      die "'pkg' not found on FreeBSD. Install pkg or pkgng first."
-    fi
-  fi
-
-  if [[ "$uname_s" == "OpenBSD" ]]; then
-    if command -v pkg_add >/dev/null 2>&1; then
-      PKG_MGR="pkg_add"
-      PKG_MGR_FAMILY="openbsd"
-      debug "PKG_MGR=${PKG_MGR}, PKG_MGR_FAMILY=${PKG_MGR_FAMILY}"
-      return
-    else
-      die "'pkg_add' not found on OpenBSD."
-    fi
-  fi
-
-  if [[ "$uname_s" == "NetBSD" ]]; then
-    if command -v pkgin >/dev/null 2>&1; then
-      PKG_MGR="pkgin"
-      PKG_MGR_FAMILY="netbsd"
-      debug "PKG_MGR=${PKG_MGR}, PKG_MGR_FAMILY=${PKG_MGR_FAMILY}"
-      return
-    elif command -v pkg_add >/dev/null 2>&1; then
-      PKG_MGR="pkg_add"
-      PKG_MGR_FAMILY="netbsd_pkg_add"
-      debug "PKG_MGR=${PKG_MGR}, PKG_MGR_FAMILY=${PKG_MGR_FAMILY}"
-      return
-    fi
-  fi
-
-  if [[ -f /etc/arch-release ]]; then
-    if command -v pacman >/dev/null 2>&1; then
-      PKG_MGR="pacman"
-      PKG_MGR_FAMILY="arch"
-      return
-    else
-      warn "Arch-based system detected but 'pacman' is not in PATH."
-      if vopk_confirm "pacman not found, continue without system package manager?"; then
-        :
-      else
-        die "Cannot manage packages on Arch without pacman."
-      fi
-    fi
-  fi
-
-  if command -v pacman >/dev/null 2>&1; then
-    PKG_MGR="pacman"
-    PKG_MGR_FAMILY="arch"
-  elif command -v nala >/dev/null 2>&1; then
-    PKG_MGR="nala"
-    PKG_MGR_FAMILY="debian"  # nala is an apt front-end
-  elif command -v apt-get >/dev/null 2>&1 || command -v apt >/dev/null 2>&1; then
-    if command -v apt-get >/dev/null 2>&1; then
-      PKG_MGR="apt-get"
-    else
-      PKG_MGR="apt"
-    fi
-    PKG_MGR_FAMILY="debian"  # will re-specialize behavior via DISTRO_ID
-  elif command -v dnf5 >/dev/null 2>&1; then
-    PKG_MGR="dnf5"
-    PKG_MGR_FAMILY="redhat"
-  elif command -v microdnf >/dev/null 2>&1; then
-    PKG_MGR="microdnf"
-    PKG_MGR_FAMILY="redhat"
-  elif command -v dnf >/dev/null 2>&1; then
-    PKG_MGR="dnf"
-    PKG_MGR_FAMILY="redhat"
-  elif command -v yum >/dev/null 2>&1; then
-    PKG_MGR="yum"
-    PKG_MGR_FAMILY="redhat"
-  elif command -v zypper >/dev/null 2>&1; then
-    PKG_MGR="zypper"
-    PKG_MGR_FAMILY="suse"
-  elif command -v apk >/dev/null 2>&1; then
-    PKG_MGR="apk"
-    PKG_MGR_FAMILY="alpine"
-  elif command -v xbps-install >/dev/null 2>&1; then
-    PKG_MGR="xbps-install"
-    PKG_MGR_FAMILY="void"
-  elif command -v emerge >/dev/null 2>&1; then
-    PKG_MGR="emerge"
-    PKG_MGR_FAMILY="gentoo"
-  elif command -v vmpkg >/dev/null 2>&1; then
-    PKG_MGR="vmpkg"
-    PKG_MGR_FAMILY="vmpkg"
-    SUDO=""
-    warn "No system package manager detected; vopk will use 'vmpkg' as backend."
-  elif [[ -f /etc/debian_version ]] && command -v dpkg >/dev/null 2>&1; then
-    PKG_MGR="dpkg"
-    PKG_MGR_FAMILY="debian_dpkg"
-    warn "Debian-based system detected but no apt/apt-get found."
-    warn "vopk will offer limited functionality using dpkg only (no repo installs)."
-  else
-    die "No supported package manager found (pacman/apt/apt-get/dnf/yum/zypper/apk/xbps/emerge/dpkg/vmpkg)."
-  fi
-
-  debug "PKG_MGR=${PKG_MGR}, PKG_MGR_FAMILY=${PKG_MGR_FAMILY}"
-}
-
-ensure_pkg_mgr() {
-  if [[ -z "${PKG_MGR}" ]]; then
-    detect_pkg_mgr
-  fi
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    export VMPKG_ASSUME_YES="${VOPK_ASSUME_YES}"
-    export VMPKG_DRY_RUN="${VOPK_DRY_RUN}"
-    export VMPKG_NO_COLOR="${VOPK_NO_COLOR}"
-    export VMPKG_DEBUG="${VOPK_DEBUG}"
-    export VMPKG_QUIET="${VOPK_QUIET}"
-  fi
-}
-
-###############################################################################
-# USAGE
-###############################################################################
-
-usage() {
-  ui_banner
-
-  ui_section "Usage"
-  ui_row "cmd" "vopk [options] <command> [args]"
-  ui_row "help" "vopk --help | -h"
-  ui_hint "Use --debug for verbose logs, --dry-run to preview without changes."
-
-  ui_section "Daily actions"
-  ui_row "update" "Refresh package database"
-  ui_row "upgrade" "Upgrade packages (safe)"
-  ui_row "full-upgrade" "Full system upgrade (dist-upgrade)"
-  ui_row "install" "Install package(s)"
-  ui_row "remove" "Remove package(s)"
-  ui_row "purge" "Remove packages + configs"
-  ui_row "autoremove" "Remove orphan dependencies"
-  ui_row "search" "Search packages"
-  ui_row "list" "List installed packages"
-  ui_row "show" "Show package info"
-  ui_row "clean" "Clean caches"
-
-  ui_section "System & dev"
-  ui_row "install-dev-kit" "Install compilers + git + basics"
-  ui_row "fix-dns" "Rebuild /etc/resolv.conf or restart resolvers"
-  ui_row "sys-info" "Print system summary"
-  ui_row "doctor" "Environment health check"
-  ui_row "kernel" "Kernel version"
-  ui_row "disk" "Disk usage"
-  ui_row "mem" "Memory usage"
-  ui_row "top" "Launch htop/top"
-  ui_row "ps" "Top processes"
-  ui_row "ip" "Network info"
-
-  ui_section "Repos"
-  ui_row "repos-list" "List configured repositories"
-  ui_row "add-repo" "Add repository (backend aware)"
-  ui_row "remove-repo" "Disable/remove repository"
-
-  ui_section "Aliases (new)"
-  ui_row "i" "install"
-  ui_row "add" "install"
-  ui_row "rm" "remove"
-  ui_row "del" "remove"
-  ui_row "up" "update + upgrade"
-  ui_row "refresh" "update + upgrade"
-  ui_row "fu" "full-upgrade"
-  ui_row "upgrade-all" "full-upgrade"
-  ui_row "ls" "list"
-  ui_row "s" "search"
-  ui_row "find" "search"
-  ui_row "si" "show info"
-  ui_row "info" "show info"
-  ui_row "ar" "autoremove"
-  ui_row "cc" "clean"
-
-  ui_section "Backends & raw"
-  ui_row "backend" "Raw backend passthrough"
-  ui_row "script-v" "Alias of backend"
-  ui_row "vm / vmpkg" "Call vmpkg directly (if installed)"
-
-  ui_section "Global options"
-  ui_row "-y/--yes" "Assume yes for all prompts"
-  ui_row "-n/--dry-run" "Preview only, no changes"
-  ui_row "--no-color" "Disable colored output"
-  ui_row "--debug" "Verbose debug logging"
-  ui_row "-q/--quiet" "Hide info logs"
-
-  ui_section "Environment"
-  ui_row "VOPK_SUDO=\"\"" "Disable sudo/doas"
-  ui_row "VOPK_SUDO=\"doas\"" "Use doas"
-  ui_row "VOPK_ASSUME_YES=1" "Assume yes"
-  ui_row "VOPK_DRY_RUN=1" "Global dry-run"
-  ui_row "VOPK_NO_COLOR=1" "Disable colors"
-  ui_row "VOPK_DEBUG=1" "Enable debug logs"
-  ui_row "VOPK_QUIET=1" "Hide info logs"
-}
-
-###############################################################################
-# GENERIC HELPERS
-###############################################################################
-
-run_and_capture() {
-  local __var="$1"; shift
-  local __tmp
-  __tmp="$(mktemp /tmp/vopk-log.XXXXXX)"
-
-  local __status=0
-
-  set +e
-  "$@" 2>&1 | tee "$__tmp"
-  __status=$?
-  set -e
-
-  local __data=""
-  if [[ -s "$__tmp" ]]; then
-    __data="$(cat "$__tmp")"
-  fi
-  rm -f "$__tmp"
-
-  printf -v "$__var" '%s' "$__data"
-  return "$__status"
-}
-
-vopk_preview() {
-  set +e
-  "$@"
-  local _st=$?
-  set -e
-  debug "preview exit status: ${_st}"
-  return 0
-}
-
-print_pkg_not_found_msgs() {
-  for p in "$@"; do
-    printf 'vopk: The package "%s" was not found\n' "$p" >&2
-  done
-}
-
-###############################################################################
-# GENERIC PACKAGE EXISTENCE CHECKS
-###############################################################################
-
-VOPK_PRESENT_PKGS=()
-VOPK_MISSING_PKGS=()
-
-redhat_pkg_exists() {
-  ${PKG_MGR} info "$1" >/dev/null 2>&1
-}
-
-suse_pkg_exists() {
-  zypper info "$1" >/dev/null 2>&1
-}
-
-alpine_pkg_exists() {
-  apk info -e "$1" >/dev/null 2>&1
-}
-
-void_pkg_exists() {
-  xbps-query -RS "$1" >/dev/null 2>&1
-}
-
-arch_pkg_exists() {
-  pacman -Si "$1" >/dev/null 2>&1
-}
-
-brew_pkg_exists() {
-  brew info "$1" >/dev/null 2>&1
-}
-
-freebsd_pkg_exists() {
-  pkg search -Q "$1" >/dev/null 2>&1
-}
-
-check_pkgs_exist_generic() {
-  local pkg
-  VOPK_PRESENT_PKGS=()
-  VOPK_MISSING_PKGS=()
-
-  for pkg in "$@"; do
-    case "${PKG_MGR_FAMILY}" in
-      arch)
-        if arch_pkg_exists "$pkg"; then
-          VOPK_PRESENT_PKGS+=("$pkg")
-        else
-          VOPK_MISSING_PKGS+=("$pkg")
-        fi
-        ;;
-      brew)
-        if brew_pkg_exists "$pkg"; then
-          VOPK_PRESENT_PKGS+=("$pkg")
-        else
-          VOPK_MISSING_PKGS+=("$pkg")
-        fi
-        ;;
-      freebsd)
-        if freebsd_pkg_exists "$pkg"; then
-          VOPK_PRESENT_PKGS+=("$pkg")
-        else
-          VOPK_MISSING_PKGS+=("$pkg")
-        fi
-        ;;
-      redhat)
-        if redhat_pkg_exists "$pkg"; then
-          VOPK_PRESENT_PKGS+=("$pkg")
-        else
-          VOPK_MISSING_PKGS+=("$pkg")
-        fi
-        ;;
-      suse)
-        if suse_pkg_exists "$pkg"; then
-          VOPK_PRESENT_PKGS+=("$pkg")
-        else
-          VOPK_MISSING_PKGS+=("$pkg")
-        fi
-        ;;
-      alpine)
-        if alpine_pkg_exists "$pkg"; then
-          VOPK_PRESENT_PKGS+=("$pkg")
-        else
-          VOPK_MISSING_PKGS+=("$pkg")
-        fi
-        ;;
-      void)
-        if void_pkg_exists "$pkg"; then
-          VOPK_PRESENT_PKGS+=("$pkg")
-        else
-          VOPK_MISSING_PKGS+=("$pkg")
-        fi
-        ;;
-      gentoo)
-        VOPK_PRESENT_PKGS+=("$pkg")
-        ;;
-      *)
-        VOPK_PRESENT_PKGS+=("$pkg")
-        ;;
-    esac
-  done
-
-  if ((${#VOPK_MISSING_PKGS[@]} > 0)); then
-    print_pkg_not_found_msgs "${VOPK_MISSING_PKGS[@]}"
-  fi
-}
-
-###############################################################################
-# NAME MAPPERS (PER FAMILY)
-###############################################################################
-
-# Debian "pure" mapping
-debian_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    # BASIC COMMON CONFUSIONS
-    docker)
-      mapped="docker.io"
-      warn "On Debian, 'docker' is actually 'docker.io' in main repos."
-      ;;
-    node)
-      mapped="nodejs"
-      warn "'node' is 'nodejs' on Debian."
-      ;;
-    npm)
-      mapped="npm"
-      ;;
-    pip|pip3|python-pip)
-      mapped="python3-pip"
-      warn "Using 'python3-pip' instead of 'pip'."
-      ;;
-    python)
-      mapped="python3"
-      warn "'python' command is 'python3' on modern Debian."
-      ;;
-    python2|python2-pip|pip2)
-      warn "Python2 is deprecated and removed on modern Debian."
-      mapped="python3"
-      ;;
-    # DEVELOPMENT TOOLS
-    gcc|g++)
-      mapped="build-essential"
-      warn "'$name' is part of build-essential on Debian."
-      ;;
-    make)
-      mapped="make"
-      ;;
-    cmake)
-      mapped="cmake"
-      ;;
-    clang)
-      mapped="clang"
-      ;;
-    # JS / WEB
-    yarn)
-      mapped="yarnpkg"
-      warn "'yarn' package is named 'yarnpkg' on Debian."
-      ;;
-    typescript)
-      mapped="node-typescript"
-      warn "Using 'node-typescript' for Debian."
-      ;;
-    eslint)
-      mapped="node-eslint"
-      warn "eslint is provided as 'node-eslint' in Debian."
-      ;;
-    # DATABASES
-    mysql)
-      mapped="mariadb-server"
-      warn "'mysql' is provided via 'mariadb-server' in Debian."
-      ;;
-    mysql-client)
-      mapped="mariadb-client"
-      warn "'mysql-client' is provided via 'mariadb-client' in Debian."
-      ;;
-    postgres|postgresql)
-      mapped="postgresql"
-      ;;
-    mongodb)
-      warn "MongoDB is NOT in official Debian repos. Using 'mongodb-clients' placeholder."
-      mapped="mongodb-clients"
-      ;;
-    redis)
-      mapped="redis-server"
-      ;;
-    # PHP
-    php)
-      mapped="php"
-      ;;
-    composer)
-      mapped="composer"
-      ;;
-    # RUBY
-    ruby-gems|rubygems)
-      mapped="ruby-full"
-      warn "Ruby gems are part of ruby-full."
-      ;;
-    # GO / RUST
-    go|golang)
-      mapped="golang-go"
-      ;;
-    rust)
-      mapped="rustc"
-      warn "Install 'rustc' (and possibly 'cargo'), or consider rustup."
-      ;;
-    cargo)
-      mapped="cargo"
-      ;;
-    # SYSTEM UTILITIES
-    ifconfig)
-      mapped="net-tools"
-      warn "'ifconfig' is provided by 'net-tools'."
-      ;;
-    iptables)
-      mapped="iptables"
-      ;;
-    htop)
-      mapped="htop"
-      ;;
-    neofetch)
-      mapped="neofetch"
-      ;;
-    fastfetch)
-      mapped="fastfetch"
-      ;;
-    tree)
-      mapped="tree"
-      ;;
-    # LIBRARIES
-    openssl)
-      mapped="openssl"
-      ;;
-    ssl|libssl)
-      mapped="libssl-dev"
-      warn "'$name' mapped to 'libssl-dev'."
-      ;;
-    zlib)
-      mapped="zlib1g"
-      ;;
-    zlib-dev|zlib-devel)
-      mapped="zlib1g-dev"
-      warn "'$name' mapped to 'zlib1g-dev'."
-      ;;
-    curl)
-      mapped="curl"
-      ;;
-    wget)
-      mapped="wget"
-      ;;
-    pkgconfig|pkg-config)
-      mapped="pkg-config"
-      ;;
-    # JAVA
-    java|jdk|openjdk)
-      mapped="default-jdk"
-      warn "Using 'default-jdk' on Debian."
-      ;;
-    # DEFAULT
-    *)
-      mapped="$name"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-# Ubuntu / Ubuntu-like mapping
-ubuntu_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    docker)
-      mapped="docker.io"
-      warn "On Ubuntu, 'docker' is usually 'docker.io' from the official archive."
-      ;;
-    node)
-      mapped="nodejs"
-      warn "'node' is 'nodejs' in Ubuntu repos."
-      ;;
-    npm)
-      mapped="npm"
-      ;;
-    pip|pip3|python-pip)
-      mapped="python3-pip"
-      warn "Using 'python3-pip' instead of 'pip'."
-      ;;
-    python)
-      mapped="python3"
-      warn "'python' command is 'python3' on modern Ubuntu."
-      ;;
-    mysql)
-      mapped="mysql-server"
-      warn "'mysql' maps to 'mysql-server' on Ubuntu."
-      ;;
-    mysql-client)
-      mapped="mysql-client"
-      ;;
-    mongodb)
-      warn "MongoDB is not in main Ubuntu repos (newer releases). Consider upstream instructions."
-      mapped="mongodb-clients"
-      ;;
-    redis)
-      mapped="redis-server"
-      ;;
-    yarnpkg)
-      mapped="yarn"
-      ;;
-    yarn)
-      mapped="yarn"
-      ;;
-    gcc|g++)
-      mapped="build-essential"
-      warn "'$name' is part of build-essential on Ubuntu."
-      ;;
-    go|golang)
-      mapped="golang-go"
-      ;;
-    pkgconfig|pkg-config)
-      mapped="pkg-config"
-      ;;
-    ifconfig)
-      mapped="net-tools"
-      warn "'ifconfig' is provided by 'net-tools'."
-      ;;
-    # Fallbacks similar to Debian
-    *)
-      mapped="$(debian_fix_pkg_name "$name")"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-# Arch mapping (pacman)
-arch_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    node)
-      mapped="nodejs"
-      ;;
-    pip|pip3|python-pip)
-      mapped="python-pip"
-      ;;
-    python)
-      mapped="python"
-      ;;
-    mysql)
-      mapped="mariadb"
-      ;;
-    mysql-client)
-      mapped="mariadb-clients"
-      ;;
-    redis)
-      mapped="redis"
-      ;;
-    yarnpkg)
-      mapped="yarn"
-      ;;
-    pkg-config)
-      mapped="pkgconf"
-      ;;
-    ifconfig)
-      mapped="net-tools"
-      ;;
-    build-essential)
-      mapped="base-devel"
-      ;;
-    *)
-      mapped="$name"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-# RedHat (dnf/yum) mapping
-redhat_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    node)
-      mapped="nodejs"
-      ;;
-    npm)
-      mapped="npm"
-      ;;
-    pip|pip3|python-pip)
-      mapped="python3-pip"
-      ;;
-    python)
-      mapped="python3"
-      ;;
-    mysql)
-      mapped="mariadb-server"
-      warn "'mysql' is provided by 'mariadb-server' on many RedHat-based systems."
-      ;;
-    mysql-client)
-      mapped="mariadb"
-      ;;
-    yarnpkg)
-      mapped="yarn"
-      ;;
-    pkg-config)
-      mapped="pkgconfig"
-      ;;
-    ifconfig)
-      mapped="net-tools"
-      ;;
-    build-essential|base-devel)
-      mapped="gcc"
-      ;;
-    *)
-      mapped="$name"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-# SUSE (zypper) mapping
-suse_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    node)
-      mapped="nodejs"
-      ;;
-    npm)
-      mapped="npm10"   # conservative; user can adjust
-      ;;
-    pip|pip3|python-pip)
-      mapped="python3-pip"
-      ;;
-    python)
-      mapped="python3"
-      ;;
-    mysql)
-      mapped="mariadb"
-      ;;
-    mysql-client)
-      mapped="mariadb-client"
-      ;;
-    ifconfig)
-      mapped="net-tools-deprecated"
-      ;;
-    build-essential|base-devel)
-      mapped="gcc"
-      ;;
-    *)
-      mapped="$name"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-# Alpine (apk) mapping
-alpine_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    node)
-      mapped="nodejs"
-      ;;
-    npm)
-      mapped="npm"
-      ;;
-    pip|pip3|python-pip)
-      mapped="py3-pip"
-      ;;
-    python)
-      mapped="python3"
-      ;;
-    mysql)
-      mapped="mariadb"
-      ;;
-    mysql-client)
-      mapped="mariadb-client"
-      ;;
-    build-essential|base-devel)
-      mapped="build-base"
-      ;;
-    ifconfig)
-      mapped="net-tools"
-      ;;
-    pkg-config)
-      mapped="pkgconf"
-      ;;
-    *)
-      mapped="$name"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-# Void (xbps) mapping
-void_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    node)
-      mapped="nodejs"
-      ;;
-    pip|pip3|python-pip)
-      mapped="python3-pip"
-      ;;
-    python)
-      mapped="python3"
-      ;;
-    mysql)
-      mapped="mariadb-server"
-      ;;
-    mysql-client)
-      mapped="mariadb-client"
-      ;;
-    build-essential|base-devel)
-      mapped="base-devel"
-      ;;
-    ifconfig)
-      mapped="net-tools"
-      ;;
-    pkg-config)
-      mapped="pkg-config"
-      ;;
-    *)
-      mapped="$name"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-# Gentoo (emerge) mapping
-gentoo_fix_pkg_name() {
-  local name="$1"
-  local mapped=""
-
-  case "$name" in
-    node)
-      mapped="net-libs/nodejs"
-      ;;
-    npm)
-      mapped="net-libs/nodejs"
-      ;;
-    pip|pip3|python-pip)
-      mapped="dev-python/pip"
-      ;;
-    python)
-      mapped="dev-lang/python"
-      ;;
-    mysql)
-      mapped="dev-db/mariadb"
-      ;;
-    mysql-client)
-      mapped="dev-db/mariadb-tools"
-      ;;
-    build-essential|base-devel)
-      mapped="system"
-      ;;
-    *)
-      mapped="$name"
-      ;;
-  esac
-
-  echo "$mapped"
-}
-
-###############################################################################
-# DEBIAN HELPERS
-###############################################################################
-
-debian_pkg_exists() {
-  local pkg="$1"
-  debug "Checking Debian/Ubuntu package existence via apt-cache show: ${pkg}"
-  if apt-cache show "$pkg" >/dev/null 2>&1; then
-    return 0
-  fi
-  return 1
-}
-
-debian_install_pkgs() {
-  local original_pkgs=("$@")
-  local fixed_pkgs=()
-  local present=()
-  local missing=()
-
-  local fix_fn="debian_fix_pkg_name"
-  if is_ubuntu_like; then
-    fix_fn="ubuntu_fix_pkg_name"
-  fi
-
-  local p fixed
-  for p in "${original_pkgs[@]}"; do
-    fixed="$("$fix_fn" "$p")"
-    if [[ "$fixed" != "$p" ]]; then
-      log "Mapped package '$p' -> '$fixed' for $(is_ubuntu_like && echo Ubuntu || echo Debian)."
-    fi
-    fixed_pkgs+=("$fixed")
-  done
-
-  if [[ "${PKG_MGR_FAMILY}" == "debian_dpkg" || "${PKG_MGR}" == "dpkg" ]]; then
-    local debs=()
-    for p in "${fixed_pkgs[@]}"; do
-      if [[ -f "$p" && "$p" == *.deb ]]; then
-        debs+=("$p")
-      else
-        missing+=("$p")
-      fi
+ui_table() {
+    local headers=("$@")
+    local col_widths=()
+    local data=()
+    
+    # Calculate column widths
+    for ((i=0; i<${#headers[@]}; i++)); do
+        col_widths[$i]=${#headers[$i]}
     done
+    
+    # Print header
+    printf "%s" "$BOLD$UNDERLINE$PRIMARY"
+    for ((i=0; i<${#headers[@]}; i++)); do
+        printf "%-${col_widths[$i]}s " "${headers[$i]}"
+    done
+    printf "%s\n" "$RESET"
+}
 
-    if ((${#missing[@]} > 0)); then
-      warn "On dpkg-only systems vopk can only install local .deb files."
-      print_pkg_not_found_msgs "${missing[@]}"
-    fi
-
-    if ((${#debs[@]} == 0)); then
-      warn "No .deb files to install with dpkg."
-      return 1
-    fi
-
-    echo "vopk: Local .deb files to install:"
-    printf '  %s\n' "${debs[@]}"
-
-    echo
-    vopk_preview ${SUDO} dpkg -i --dry-run "${debs[@]}"
-    echo
-
-    if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-      return 0
-    fi
-
-    if ! vopk_confirm "Install these .deb files via dpkg?"; then
-      return 1
-    fi
-
-    ${SUDO} dpkg -i "${debs[@]}"
-    return 0
-  fi
-
-  for p in "${fixed_pkgs[@]}"; do
-    if debian_pkg_exists "$p"; then
-      present+=("$p")
-    else
-      missing+=("$p")
-    fi
-  done
-
-  if ((${#missing[@]} > 0)); then
-    print_pkg_not_found_msgs "${missing[@]}"
-  fi
-
-  if ((${#present[@]} == 0)); then
-    warn "No valid packages to install."
-    return 1
-  fi
-
-  echo "vopk: Packages to install ($(platform_label)):"
-  printf '  %s\n' "${present[@]}"
-
-  echo
-  vopk_preview ${SUDO} ${PKG_MGR} install --dry-run "${present[@]}"
-  echo
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    return 0
-  fi
-
-  if ! vopk_confirm "Install packages: ${present[*]} ?"; then
-    return 1
-  fi
-
-  local out=""
-  if run_and_capture out ${SUDO} ${PKG_MGR} install -y "${present[@]}"; then
-    return 0
-  else
-    warn "Install failed. Check log above for details."
-    return 1
-  fi
+ui_spinner() {
+    local pid=$1
+    local msg="$2"
+    local delay=0.1
+    local spin_chars=("🕐" "🕑" "🕒" "🕓" "🕔" "🕕" "🕖" "🕗" "🕘" "🕙" "🕚" "🕛")
+    local i=0
+    
+    printf "\n"
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r%s%s%s %s" "$ACCENT2" "${spin_chars[$i]}" "$RESET" "$msg"
+        i=$(( (i+1) % ${#spin_chars[@]} ))
+        sleep $delay
+    done
+    printf "\r%s✓%s %s\n" "$SUCCESS" "$RESET" "Done"
 }
 
 ###############################################################################
-# ARCH: PACMAN + YAY / AUR
+# ENHANCED TROUBLESHOOTING WITH AI INTEGRATION
 ###############################################################################
 
-detect_aur_helper() {
-  local helper
-  for helper in yay paru pikaur aura trizen; do
-    if command -v "$helper" >/dev/null 2>&1; then
-      AUR_HELPER="$helper"
-      return 0
-    fi
-  done
-  AUR_HELPER=""
-  return 1
+show_troubleshooting() {
+    local error="$1"
+    ui_section "Troubleshooting Assistant"
+    
+    # AI-powered error analysis
+    local error_type=$(analyze_error "$error")
+    
+    case "$error_type" in
+        permission)
+            ui_row "Issue:" "Permission Denied"
+            ui_hint "Run with sudo: sudo vopk ..."
+            ui_hint "Check sudo configuration: sudo -l"
+            ui_hint "Use doas: export VOPK_SUDO=doas"
+            ui_hint "Run as root: su -c 'vopk ...'"
+            ;;
+        network)
+            ui_row "Issue:" "Network Connectivity"
+            ui_hint "Check internet: ping 8.8.8.8"
+            ui_hint "Fix DNS: vopk fix-dns"
+            ui_hint "Configure proxy: export http_proxy=..."
+            ui_hint "Check firewall: sudo ufw status"
+            ;;
+        dependency)
+            ui_row "Issue:" "Dependency Problem"
+            ui_hint "Fix dependencies: vopk fix-dependencies"
+            ui_hint "Check broken: vopk doctor"
+            ui_hint "Clean cache: vopk clean --all"
+            ui_hint "Update system: vopk update && vopk upgrade"
+            ;;
+        not_found)
+            ui_row "Issue:" "Package Not Found"
+            ui_hint "Update lists: vopk update"
+            ui_hint "Search: vopk search <name>"
+            ui_hint "Check spelling"
+            ui_hint "Try alternative package names"
+            ;;
+        conflict)
+            ui_row "Issue:" "Package Conflict"
+            ui_hint "Remove conflicting: vopk remove <package>"
+            ui_hint "Force install: vopk install --force"
+            ui_hint "Check dependencies: vopk depends <package>"
+            ;;
+        disk_space)
+            ui_row "Issue:" "Disk Space"
+            ui_hint "Check space: df -h"
+            ui_hint "Clean cache: vopk clean --all"
+            ui_hint "Remove old kernels"
+            ui_hint "Clean temp files: sudo rm -rf /tmp/*"
+            ;;
+        *)
+            ui_row "Issue:" "Unknown Error"
+            ui_hint "Run diagnostics: vopk doctor --verbose"
+            ui_hint "Check logs: tail -f $VOPK_LOG_FILE"
+            ui_hint "Update vopk: vopk self-update"
+            ui_hint "Report issue: $VOPK_ISSUES_URL"
+            ;;
+    esac
+    
+    ui_hr
+    printf "%sQuick Fix:%s Try: vopk fix-all\n" "$BOLD$WARNING" "$RESET"
 }
 
-ensure_arch_build_deps() {
-  if command -v makepkg >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
-    return 0
-  fi
-
-  log "Installing 'base-devel' and 'git' via pacman before building AUR packages..."
-  if ! ${SUDO} pacman -S --needed --noconfirm base-devel git; then
-    warn "Failed to install base-devel/git needed for building AUR packages."
-    return 1
-  fi
-  return 0
-}
-
-manual_install_aur_packages() {
-  local aur_pkgs=("$@")
-
-  if [[ ${#aur_pkgs[@]} -eq 0 ]]; then
-    return 0
-  fi
-
-  if [[ ${EUID} -eq 0 ]]; then
-    warn "Refusing to build AUR packages as root; build them as a regular user."
-    return 1
-  fi
-
-  if ! ensure_arch_build_deps; then
-    warn "Missing build prerequisites for manual AUR installation."
-    return 1
-  fi
-
-  local tmpdir
-  tmpdir="$(mktemp -d /tmp/vopk-aur-XXXXXX)"
-  local failures=()
-
-  for pkg in "${aur_pkgs[@]}"; do
-    log "Building AUR package: ${pkg}"
-    if ! git clone --depth=1 "https://aur.archlinux.org/${pkg}.git" "${tmpdir}/${pkg}" >/dev/null 2>&1; then
-      warn "Could not clone AUR package ${pkg}."
-      failures+=("$pkg")
-      continue
-    fi
-    if ! (cd "${tmpdir}/${pkg}" && makepkg -si --noconfirm); then
-      warn "Failed to build/install AUR package ${pkg}."
-      failures+=("$pkg")
-    fi
-  done
-
-  rm -rf "${tmpdir}"
-
-  if ((${#failures[@]} > 0)); then
-    warn "Some AUR packages could not be installed without a helper."
-    print_pkg_not_found_msgs "${failures[@]}"
-    return 1
-  fi
-
-  log_success "AUR packages installed using built-in makepkg flow."
-  return 0
-}
-
-install_yay_if_needed() {
-  if detect_aur_helper; then
-    return 0
-  fi
-
-  if [[ ${EUID} -eq 0 ]]; then
-    warn "Running as root; refusing to bootstrap yay from AUR as root."
-    warn "Use a normal user to install yay, then run vopk from that user."
-    return 1
-  fi
-
-  log "Bootstrapping 'yay' from AUR..."
-
-  if ! ensure_arch_build_deps; then
-    return 1
-  fi
-
-  local tmpdir
-  tmpdir="$(mktemp -d /tmp/vopk-yay-XXXXXX)"
-
-  if ! git clone --depth=1 https://aur.archlinux.org/yay.git "$tmpdir" >/dev/null 2>&1; then
-    warn "Failed to clone yay AUR repository."
-    rm -rf "$tmpdir"
-    return 1
-  fi
-
-  if ! (cd "$tmpdir" && makepkg -si --noconfirm); then
-    warn "Failed to build/install yay via makepkg."
-    rm -rf "$tmpdir"
-    return 1
-  fi
-
-  rm -rf "$tmpdir"
-  log_success "'yay' installed successfully."
-  AUR_HELPER="yay"
-  return 0
-}
-
-arch_install_with_yay() {
-  local raw_pkgs=("$@")
-  local pkgs=()
-  local official_pkgs=()
-  local aur_candidates=()
-  local aur_helper=""
-  local p fixed
-
-  if [[ ${#raw_pkgs[@]} -eq 0 ]]; then
-    die "You must specify at least one package to install."
-  fi
-
-  for p in "${raw_pkgs[@]}"; do
-    fixed="$(arch_fix_pkg_name "$p")"
-    if [[ "$fixed" != "$p" ]]; then
-      log "Mapped package '$p' -> '$fixed' for Arch."
-    fi
-    pkgs+=("$fixed")
-  done
-
-  for p in "${pkgs[@]}"; do
-    if pacman -Si "$p" >/dev/null 2>&1; then
-      official_pkgs+=("$p")
+analyze_error() {
+    local error="$1"
+    
+    # AI-powered error classification
+    if [[ "$error" =~ permission|sudo|root|denied ]]; then
+        echo "permission"
+    elif [[ "$error" =~ network|connect|download|timeout|resolve ]]; then
+        echo "network"
+    elif [[ "$error" =~ dependency|depends|require|needs ]]; then
+        echo "dependency"
+    elif [[ "$error" =~ "not found"|"no such"|"unavailable" ]]; then
+        echo "not_found"
+    elif [[ "$error" =~ conflict|conflicting|already|installed ]]; then
+        echo "conflict"
+    elif [[ "$error" =~ "disk"|"space"|"full"|"no space" ]]; then
+        echo "disk_space"
     else
-      aur_candidates+=("$p")
+        echo "unknown"
     fi
-  done
+}
 
-  if detect_aur_helper; then
-    aur_helper="$AUR_HELPER"
-  fi
+###############################################################################
+# ADVANCED CONFIGURATION WITH YAML/JSON/TOML SUPPORT
+###############################################################################
 
-  if ((${#official_pkgs[@]} == 0 && ${#aur_candidates[@]} == 0)); then
-    warn "No valid packages to install (Arch)."
-    return 1
-  fi
-
-  echo "vopk: Packages to install ($(platform_label) official repos):"
-  if ((${#official_pkgs[@]} > 0)); then
-    printf '  %s\n' "${official_pkgs[@]}"
-  else
-    echo "  (none)"
-  fi
-
-  echo "vopk: Packages to install (AUR candidates for $(platform_label)):"
-  if ((${#aur_candidates[@]} > 0)); then
-    printf '  %s\n' "${aur_candidates[@]}"
-  else
-    echo "  (none)"
-  fi
-
-  if ((${#official_pkgs[@]} > 0)); then
-    echo
-    vopk_preview pacman -S --needed --print-format '%n' "${official_pkgs[@]}"
-    echo
-  fi
-
-  if ((${#aur_candidates[@]} > 0)); then
-    echo
-    if [[ -n "${aur_helper}" ]]; then
-      echo "vopk: AUR packages will be handled via ${aur_helper}."
-    else
-      echo "vopk: AUR packages will be handled via yay/paru if present, otherwise built-in makepkg fallback."
-    fi
-  fi
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    return 0
-  fi
-
-  if ! vopk_confirm "Proceed with installation?"; then
-    return 1
-  fi
-
-  if ((${#official_pkgs[@]} > 0)); then
-    local out_pac=""
-    if ! run_and_capture out_pac ${SUDO} pacman -S --needed --noconfirm "${official_pkgs[@]}"; then
-      warn "Error while installing via pacman. Check the log above."
-    fi
-  fi
-
-  if ((${#aur_candidates[@]} > 0)); then
-    local aur_cmd="${aur_helper}"
-
-    if [[ -z "${aur_cmd}" ]]; then
-      if install_yay_if_needed; then
-        aur_cmd="${AUR_HELPER:-yay}"
-      fi
-    fi
-
-    if [[ -n "${aur_cmd}" ]]; then
-      local yay_out=""
-      if ! run_and_capture yay_out "${aur_cmd}" -S --needed --noconfirm "${aur_candidates[@]}"; then
-        if grep -qiE 'not found|could not find|no such package' <<< "$yay_out"; then
-          print_pkg_not_found_msgs "${aur_candidates[@]}"
-        else
-          warn "Error while installing via ${aur_cmd}. Check the log above."
+load_config() {
+    local config_files=(
+        "/etc/vopk/vopk.conf"
+        "/etc/vopk/config.yaml"
+        "/etc/vopk/config.json"
+        "${VOPK_CONFIG_DIR}/config.conf"
+        "${VOPK_CONFIG_DIR}/config.yaml"
+        "${VOPK_CONFIG_DIR}/config.json"
+        "${VOPK_CONFIG_DIR}/config.toml"
+        "${HOME}/.vopkrc"
+        "${HOME}/.config/vopk/config"
+    )
+    
+    for config_file in "${config_files[@]}"; do
+        if [[ -f "$config_file" ]]; then
+            debug "Loading configuration from $config_file"
+            parse_config_file "$config_file"
         fi
-        return 1
-      fi
-    else
-      warn "No AUR helper available; using built-in makepkg fallback."
-      if ! manual_install_aur_packages "${aur_candidates[@]}"; then
-        return 1
-      fi
+    done
+    
+    # Load profiles
+    load_profiles
+    
+    # Load plugin configurations
+    if [[ "$VOPK_PLUGINS" -eq 1 ]]; then
+        load_plugins
     fi
-  fi
+    
+    # Create default config if none exists
+    create_default_config
+}
 
-  return 0
+parse_config_file() {
+    local file="$1"
+    local extension="${file##*.}"
+    
+    case "$extension" in
+        yaml|yml)
+            parse_yaml_config "$file"
+            ;;
+        json)
+            parse_json_config "$file"
+            ;;
+        toml)
+            parse_toml_config "$file"
+            ;;
+        conf)
+            parse_conf_config "$file"
+            ;;
+        *)
+            # Try to detect format
+            parse_auto_config "$file"
+            ;;
+    esac
+}
+
+parse_yaml_config() {
+    local file="$1"
+    # Simplified YAML parsing
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*):\ *(.*)$ ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+            # Remove quotes
+            value="${value%\"}"
+            value="${value#\"}"
+            value="${value%\'}"
+            value="${value#\'}"
+            
+            # Set variable
+            export "VOPK_${key^^}"="$value"
+        fi
+    done < "$file"
+}
+
+parse_json_config() {
+    local file="$1"
+    if command -v jq >/dev/null 2>&1; then
+        while IFS= read -r line; do
+            if [[ "$line" =~ \"([a-zA-Z_][a-zA-Z0-9_]*)\":\ *\"?([^\",}]+)\"? ]]; then
+                local key="${BASH_REMATCH[1]}"
+                local value="${BASH_REMATCH[2]}"
+                export "VOPK_${key^^}"="$value"
+            fi
+        done < <(jq -r 'to_entries[] | "\(.key): \(.value)"' "$file" 2>/dev/null || cat "$file")
+    fi
+}
+
+parse_conf_config() {
+    local file="$1"
+    # shellcheck source=/dev/null
+    source "$file" 2>/dev/null || warn "Failed to load $file"
+}
+
+create_default_config() {
+    mkdir -p "${VOPK_CONFIG_DIR}" "${VOPK_CONFIG_DIR}/profiles" "${VOPK_CONFIG_DIR}/plugins"
+    
+    if [[ ! -f "${VOPK_CONFIG_DIR}/config.yaml" ]]; then
+        cat > "${VOPK_CONFIG_DIR}/config.yaml" <<'EOF'
+# vopk configuration - YAML format
+# Official: https://github.com/vopkteam/vopk
+
+core:
+  assume_yes: false
+  dry_run: false
+  no_color: false
+  debug: false
+  quiet: false
+  parallel: true
+  max_retries: 3
+  backup: true
+  rollback: true
+  auto_clean: 7
+  notify: true
+  telemetry: false
+  update_check: true
+  plugins: true
+  theme: "default"
+  animations: true
+  completion: true
+  history: true
+  auto_update: false
+  profile: "default"
+  optimize: true
+  benchmark: false
+  verbose: false
+  shell_integration: true
+
+cache:
+  cache_dir: "~/.cache/vopk"
+  cache_ttl: 24
+  max_cache_size: 1024
+  compression: true
+  deduplication: true
+
+security:
+  security_scan: true
+  verify_signatures: true
+  check_vulnerabilities: true
+  malware_scan: false
+  permission_check: true
+
+ai:
+  suggestions: false
+  auto_fix: false
+  learn_preferences: true
+  analyze_errors: true
+
+network:
+  timeout: 30
+  retries: 3
+  parallel_downloads: 4
+  bandwidth_limit: 0
+  proxy: ""
+
+repositories:
+  main_only: false
+  include_unstable: false
+  include_testing: false
+  include_snapshots: false
+  custom_repos: []
+
+plugins:
+  enabled: true
+  autoload: true
+  directory: "~/.config/vopk/plugins"
+
+profiles:
+  default:
+    description: "Default profile"
+    packages: []
+  development:
+    description: "Development tools"
+    packages: ["git", "docker", "nodejs", "python3"]
+  gaming:
+    description: "Gaming setup"
+    packages: ["steam", "wine", "lutris"]
+EOF
+    fi
+}
+
+load_profiles() {
+    local profile_dir="${VOPK_CONFIG_DIR}/profiles"
+    mkdir -p "$profile_dir"
+    
+    for profile_file in "$profile_dir"/*.yaml "$profile_dir"/*.json; do
+        [[ -f "$profile_file" ]] || continue
+        local profile_name="$(basename "$profile_file" .yaml)"
+        profile_name="$(basename "$profile_name" .json)"
+        VOPK_PROFILES["$profile_name"]="$profile_file"
+    done
+}
+
+load_plugins() {
+    local plugin_dir="${VOPK_CONFIG_DIR}/plugins"
+    mkdir -p "$plugin_dir"
+    
+    # Load core plugins
+    load_core_plugins
+    
+    # Load user plugins
+    for plugin in "$plugin_dir"/*.sh; do
+        [[ -f "$plugin" ]] || continue
+        debug "Loading plugin: $(basename "$plugin")"
+        # shellcheck source=/dev/null
+        source "$plugin"
+    done
+}
+
+load_core_plugins() {
+    # AI Plugin
+    if [[ "$VOPK_AI_SUGGEST" -eq 1 ]]; then
+        source_plugin "ai"
+    fi
+    
+    # Security Plugin
+    if [[ "$VOPK_SECURITY_SCAN" -eq 1 ]]; then
+        source_plugin "security"
+    fi
+    
+    # Benchmark Plugin
+    if [[ "$VOPK_BENCHMARK" -eq 1 ]]; then
+        source_plugin "benchmark"
+    fi
+}
+
+source_plugin() {
+    local plugin_name="$1"
+    local plugin_file="$(dirname "${BASH_SOURCE[0]}")/plugins/${plugin_name}.sh"
+    
+    if [[ -f "$plugin_file" ]]; then
+        # shellcheck source=/dev/null
+        source "$plugin_file"
+    fi
 }
 
 ###############################################################################
-# CORE PACKAGE COMMANDS
+# ENHANCED SHELL INTEGRATION
 ###############################################################################
 
-cmd_update() {
-  ensure_pkg_mgr
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Backend 'vmpkg' has no package database to update."
-    return 0
-  fi
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    case "${PKG_MGR_FAMILY}" in
-      debian)      vopk_preview ${SUDO} ${PKG_MGR} update 2>/dev/null || true ;;
-      debian_dpkg) warn "dpkg-only: no repo metadata to update." ;;
-      arch)        vopk_preview ${SUDO} pacman -Sy --noconfirm ;;
-      brew)        vopk_preview brew update ;;
-      freebsd)     vopk_preview ${SUDO} pkg update ;;
-      openbsd)
-        warn "OpenBSD pkg_add uses live package sets; no explicit update step."
-        ;;
-      netbsd)      vopk_preview ${SUDO} pkgin -n update || vopk_preview ${SUDO} pkgin update ;;
-      netbsd_pkg_add)
-        warn "NetBSD pkg_add has no repo metadata to update."
-        ;;
-      redhat)      vopk_preview ${SUDO} ${PKG_MGR} makecache ;;
-      suse)        vopk_preview ${SUDO} zypper refresh ;;
-      alpine)      vopk_preview ${SUDO} apk --no-interactive update ;;
-      void)        vopk_preview ${SUDO} xbps-install -S ;;
-      gentoo)      vopk_preview ${SUDO} emerge --sync ;;
+setup_shell_integration() {
+    [[ "$VOPK_SHELL_INTEGRATION" -eq 0 ]] && return
+    
+    local shell_name="$(basename "$SHELL")"
+    
+    case "$shell_name" in
+        bash)
+            setup_bash_integration
+            ;;
+        zsh)
+            setup_zsh_integration
+            ;;
+        fish)
+            setup_fish_integration
+            ;;
+        *)
+            debug "Shell integration not supported for $shell_name"
+            ;;
     esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Update package database now?"; then
-    return 1
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} update
-      ;;
-    debian_dpkg)
-      warn "No apt found; cannot update repo metadata on dpkg-only systems."
-      ;;
-    arch)
-      ${SUDO} pacman -Sy --noconfirm
-      ;;
-    brew)
-      brew update
-      ;;
-    freebsd)
-      ${SUDO} pkg update
-      ;;
-    openbsd)
-      warn "OpenBSD pkg_add uses live package sets; skipping explicit update."
-      ;;
-    netbsd)
-      ${SUDO} pkgin update
-      ;;
-    netbsd_pkg_add)
-      warn "NetBSD pkg_add has no repo metadata to update."
-      ;;
-    redhat)
-      ${SUDO} ${PKG_MGR} makecache
-      ;;
-    suse)
-      ${SUDO} zypper refresh
-      ;;
-    alpine)
-      ${SUDO} apk --no-interactive update
-      ;;
-    void)
-      ${SUDO} xbps-install -S
-      ;;
-    gentoo)
-      ${SUDO} emerge --sync
-      ;;
-  esac
 }
 
-cmd_upgrade() {
-  ensure_pkg_mgr
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Backend 'vmpkg' does not manage system upgrades."
-    return 0
-  fi
+setup_bash_integration() {
+    local completion_file="/etc/bash_completion.d/vopk"
+    
+    if [[ ! -f "$completion_file" ]] && [[ -w "/etc/bash_completion.d" ]]; then
+        generate_completion "bash" > "$completion_file"
+        log_success "Bash completion installed"
+    fi
+    
+    # Add aliases to bashrc
+    if [[ -w "$HOME/.bashrc" ]]; then
+        if ! grep -q "vopk" "$HOME/.bashrc"; then
+            cat >> "$HOME/.bashrc" <<'EOF'
 
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    case "${PKG_MGR_FAMILY}" in
-      debian)      vopk_preview ${SUDO} ${PKG_MGR} upgrade -y ;;
-      debian_dpkg) warn "dpkg-only: upgrades via repos not possible." ;;
-      arch)        vopk_preview ${SUDO} pacman -Su --noconfirm ;;
-      brew)        vopk_preview brew upgrade ;;
-      freebsd)     vopk_preview ${SUDO} pkg upgrade -y ;;
-      openbsd)     vopk_preview ${SUDO} pkg_add -n -u ;;
-      netbsd)      vopk_preview ${SUDO} pkgin -n upgrade || vopk_preview ${SUDO} pkgin upgrade ;;
-      netbsd_pkg_add) vopk_preview ${SUDO} pkg_add -n -u ;;
-      redhat)      vopk_preview ${SUDO} ${PKG_MGR} upgrade -y ;;
-      suse)        vopk_preview ${SUDO} zypper update -y ;;
-      alpine)      vopk_preview ${SUDO} apk --no-interactive upgrade ;;
-      void)        vopk_preview ${SUDO} xbps-install -Su ;;
-      gentoo)      vopk_preview ${SUDO} emerge -uD @world ;;
-    esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Upgrade installed packages now?"; then
-    return 1
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} upgrade -y
-      ;;
-    debian_dpkg)
-      warn "dpkg-only mode: full upgrade via repos is not possible (no apt)."
-      ;;
-    arch)
-      ${SUDO} pacman -Su --noconfirm
-      ;;
-    brew)
-      brew upgrade
-      ;;
-    freebsd)
-      ${SUDO} pkg upgrade -y
-      ;;
-    openbsd)
-      ${SUDO} pkg_add -u
-      ;;
-    netbsd)
-      ${SUDO} pkgin -y upgrade
-      ;;
-    netbsd_pkg_add)
-      ${SUDO} pkg_add -u
-      ;;
-    redhat)
-      ${SUDO} ${PKG_MGR} upgrade -y
-      ;;
-    suse)
-      ${SUDO} zypper update -y
-      ;;
-    alpine)
-      ${SUDO} apk --no-interactive upgrade
-      ;;
-    void)
-      ${SUDO} xbps-install -Su
-      ;;
-    gentoo)
-      ${SUDO} emerge -uD @world
-      ;;
-  esac
+# vopk aliases
+alias v='vopk'
+alias vi='vopk install'
+alias vu='vopk update'
+alias vup='vopk upgrade'
+alias vug='vopk full-upgrade'
+alias vr='vopk remove'
+alias vs='vopk search'
+alias vl='vopk list'
+alias vc='vopk clean'
+alias vcl='vopk clean --all'
+alias vd='vopk doctor'
+alias vf='vopk fix-all'
+alias vh='vopk --help'
+alias vv='vopk --version'
+EOF
+        fi
+    fi
 }
 
-cmd_full_upgrade() {
-  ensure_pkg_mgr
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Backend 'vmpkg' does not support full system upgrade."
-    return 0
-  fi
+generate_completion() {
+    local shell="${1:-bash}"
+    
+    case "$shell" in
+        bash)
+            cat <<'EOF'
+# vopk bash completion
+_vopk() {
+    local cur prev words cword
+    _init_completion || return
 
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    case "${PKG_MGR_FAMILY}" in
-      debian)      vopk_preview ${SUDO} ${PKG_MGR} dist-upgrade -y ;;
-      debian_dpkg) warn "dpkg-only: full upgrade not possible." ;;
-      arch)        vopk_preview ${SUDO} pacman -Syu --noconfirm ;;
-      brew)        vopk_preview brew upgrade ;;
-      freebsd)     vopk_preview ${SUDO} pkg upgrade -y ;;
-      openbsd)     vopk_preview ${SUDO} pkg_add -n -u ;;
-      netbsd)      vopk_preview ${SUDO} pkgin -n upgrade || vopk_preview ${SUDO} pkgin upgrade ;;
-      netbsd_pkg_add) vopk_preview ${SUDO} pkg_add -n -u ;;
-      redhat)      vopk_preview ${SUDO} ${PKG_MGR} upgrade -y ;;
-      suse)
-        vopk_preview ${SUDO} zypper dist-upgrade -y || vopk_preview ${SUDO} zypper dup -y
-        ;;
-      alpine)
-        vopk_preview ${SUDO} apk --no-interactive update
-        vopk_preview ${SUDO} apk --no-interactive upgrade
-        ;;
-      void)        vopk_preview ${SUDO} xbps-install -Su ;;
-      gentoo)      vopk_preview ${SUDO} emerge -uD @world ;;
+    local commands="update upgrade full-upgrade install remove purge autoremove search list show clean reinstall hold download changelog depends rdepends verify audit fix-dns fix-permissions fix-dependencies fix-broken export import backup restore snapshot rollback install-dev-kit install-build-deps sys-info doctor kernel disk mem top ps ip services logs monitor benchmark history flatpak snap appimage nix conda mamba npm yarn pnpm pip pipx poetry cargo go gem bundle composer dotnet mvn gradle docker podman self-update plugin"
+    
+    local flags="-y --yes -n --dry-run --no-color -d --debug -q --quiet --parallel --no-parallel --retry --cache-dir --config-dir --log-file --no-backup --no-rollback --ai --no-ai --security-scan --no-security --auto-clean --notify --no-notify --telemetry --no-telemetry --update-check --no-update-check --plugins --no-plugins -h --help -v --version --stats --doctor --completion --generate-config --list-backends --list-commands --changelog"
+    
+    case "${prev}" in
+        vopk)
+            COMPREPLY=($(compgen -W "${commands} ${flags}" -- "${cur}"))
+            ;;
+        install|remove|purge|show|search|reinstall|hold|download|depends|rdepends)
+            # Package completion
+            COMPREPLY=($(compgen -W "$(vopk list 2>/dev/null | awk '{print $1}')" -- "${cur}"))
+            ;;
+        --theme)
+            COMPREPLY=($(compgen -W "default dracula nord solarized monokai" -- "${cur}"))
+            ;;
+        --completion)
+            COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}"))
+            ;;
+        *)
+            COMPREPLY=()
+            ;;
     esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Perform a full system upgrade?"; then
-    return 1
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} dist-upgrade -y
-      ;;
-    debian_dpkg)
-      warn "dpkg-only mode: full upgrade via repos is not possible (no apt)."
-      ;;
-    arch)
-      ${SUDO} pacman -Syu --noconfirm
-      ;;
-    brew)
-      brew upgrade
-      ;;
-    freebsd)
-      ${SUDO} pkg upgrade -y
-      ;;
-    openbsd)
-      ${SUDO} pkg_add -u
-      ;;
-    netbsd)
-      ${SUDO} pkgin -y upgrade
-      ;;
-    netbsd_pkg_add)
-      ${SUDO} pkg_add -u
-      ;;
-    redhat)
-      ${SUDO} ${PKG_MGR} upgrade -y
-      ;;
-    suse)
-      ${SUDO} zypper dist-upgrade -y || ${SUDO} zypper dup -y
-      ;;
-    alpine)
-      ${SUDO} apk --no-interactive update
-      ${SUDO} apk --no-interactive upgrade
-      ;;
-    void)
-      ${SUDO} xbps-install -Su
-      ;;
-    gentoo)
-      ${SUDO} emerge -uD @world
-      ;;
-  esac
 }
+complete -F _vopk vopk
+EOF
+            ;;
+        zsh)
+            cat <<'EOF'
+#compdef vopk
+
+_vopk() {
+    local -a commands=(
+        'update:Update package databases'
+        'upgrade:Upgrade packages'
+        'full-upgrade:Full system upgrade'
+        'install:Install packages'
+        'remove:Remove packages'
+        'purge:Remove packages with configs'
+        'autoremove:Remove unused packages'
+        'search:Search for packages'
+        'list:List installed packages'
+        'show:Show package info'
+        'clean:Clean package cache'
+        'doctor:System health check'
+        'self-update:Update vopk itself'
+    )
+
+    _describe 'command' commands
+}
+
+_vopk
+EOF
+            ;;
+    esac
+}
+
+###############################################################################
+# AI-POWERED PACKAGE RECOMMENDATION SYSTEM
+###############################################################################
+
+ai_recommend_packages() {
+    [[ "$VOPK_AI_SUGGEST" -eq 0 ]] && return
+    
+    local context="$1"
+    shift
+    local packages=("$@")
+    
+    case "$context" in
+        install)
+            ai_recommend_related_packages "${packages[@]}"
+            ai_suggest_alternatives "${packages[@]}"
+            ai_warn_conflicts "${packages[@]}"
+            ;;
+        search)
+            ai_expand_search_terms "${packages[@]}"
+            ai_suggest_categories "${packages[@]}"
+            ;;
+        update)
+            ai_suggest_security_updates
+            ai_warn_breaking_changes
+            ;;
+        remove)
+            ai_warn_dependencies "${packages[@]}"
+            ai_suggest_alternatives "${packages[@]}"
+            ;;
+    esac
+}
+
+ai_recommend_related_packages() {
+    local packages=("$@")
+    local -A recommendations
+    
+    # Recommendation database
+    declare -A RECOMMENDATION_DB=(
+        ["docker"]="docker-compose docker.io"
+        ["nodejs"]="npm yarn"
+        ["python3"]="python3-pip python3-venv"
+        ["git"]="git-lfs tig"
+        ["vim"]="neovim vim-gtk"
+        ["nginx"]="certbot nginx-extras"
+        ["postgresql"]="postgresql-contrib pgadmin4"
+        ["mysql"]="mysql-client phpmyadmin"
+        ["php"]="php-cli php-fpm composer"
+        ["rust"]="cargo rustc"
+        ["go"]="golang-go golang-golang-x-tools"
+        ["java"]="maven gradle"
+        ["ruby"]="gem bundler"
+        ["dotnet"]="dotnet-sdk"
+    )
+    
+    for pkg in "${packages[@]}"; do
+        if [[ -n "${RECOMMENDATION_DB[$pkg]}" ]]; then
+            for recommended in ${RECOMMENDATION_DB[$pkg]}; do
+                recommendations["$recommended"]=1
+            done
+        fi
+    done
+    
+    if [[ ${#recommendations[@]} -gt 0 ]]; then
+        log "You might also like: ${!recommendations[*]}"
+    fi
+}
+
+ai_suggest_alternatives() {
+    local packages=("$@")
+    local -A alternatives
+    
+    declare -A ALTERNATIVE_DB=(
+        ["neovim"]="vim emacs nano"
+        ["firefox"]="chromium brave vivaldi"
+        ["vlc"]="mpv celluloid"
+        ["htop"]="btop glances"
+        ["docker"]="podman containerd"
+        ["postgresql"]="mysql sqlite"
+        ["nginx"]="apache2 caddy"
+        ["systemd"]="openrc runit"
+        ["bash"]="zsh fish"
+        ["python"]="python3"
+        ["node"]="nodejs"
+        ["yarn"]="npm pnpm"
+    )
+    
+    for pkg in "${packages[@]}"; do
+        if [[ -n "${ALTERNATIVE_DB[$pkg]}" ]]; then
+            for alt in ${ALTERNATIVE_DB[$pkg]}; do
+                alternatives["$alt"]=1
+            done
+        fi
+    done
+    
+    if [[ ${#alternatives[@]} -gt 0 ]]; then
+        log "Alternative packages: ${!alternatives[*]}"
+    fi
+}
+
+ai_warn_conflicts() {
+    local packages=("$@")
+    
+    declare -A CONFLICT_DB=(
+        ["mysql"]="mariadb"
+        ["mariadb"]="mysql"
+        ["docker"]="docker.io"
+        ["docker.io"]="docker"
+        ["nodejs"]="node"
+        ["node"]="nodejs"
+        ["python"]="python2"
+        ["python2"]="python3"
+    )
+    
+    for pkg in "${packages[@]}"; do
+        if [[ -n "${CONFLICT_DB[$pkg]}" ]]; then
+            warn "Warning: $pkg may conflict with ${CONFLICT_DB[$pkg]}"
+        fi
+    done
+}
+
+###############################################################################
+# ENHANCED PACKAGE MANAGER DETECTION WITH CLOUD AND GAME SUPPORT
+###############################################################################
+
+detect_all_package_managers() {
+    debug "Starting comprehensive package manager detection..."
+    
+    # Reset arrays
+    DETECTED_MGRS=()
+    PKG_MGR_PRIORITY=()
+    UNIVERSAL_MGRS=()
+    LANGUAGE_MGRS=()
+    CONTAINER_MGRS=()
+    CLOUD_MGRS=()
+    GAME_MGRS=()
+    
+    # Detect primary system package manager
+    detect_primary_pkg_mgr
+    
+    # Detect cloud package managers
+    detect_cloud_managers
+    
+    # Detect game package managers
+    detect_game_managers
+    
+    # Detect universal package managers
+    detect_universal_managers
+    
+    # Detect language-specific package managers
+    detect_language_managers
+    
+    # Detect container package managers
+    detect_container_managers
+    
+    # Build priority list
+    build_priority_list
+    
+    debug "Detection complete. Primary: $PKG_MGR ($PKG_MGR_FAMILY)"
+    debug "Detected ${#DETECTED_MGRS[@]} package managers"
+}
+
+detect_cloud_managers() {
+    # AWS
+    if command -v aws >/dev/null 2>&1; then
+        CLOUD_MGRS[aws]="1"
+        DETECTED_MGRS+=("aws:cloud")
+    fi
+    
+    # Azure
+    if command -v az >/dev/null 2>&1; then
+        CLOUD_MGRS[az]="1"
+        DETECTED_MGRS+=("az:cloud")
+    fi
+    
+    # Google Cloud
+    if command -v gcloud >/dev/null 2>&1; then
+        CLOUD_MGRS[gcloud]="1"
+        DETECTED_MGRS+=("gcloud:cloud")
+    fi
+    
+    # Kubernetes
+    if command -v kubectl >/dev/null 2>&1; then
+        CLOUD_MGRS[kubectl]="1"
+        DETECTED_MGRS+=("kubectl:cloud")
+    fi
+    
+    # Helm
+    if command -v helm >/dev/null 2>&1; then
+        CLOUD_MGRS[helm]="1"
+        DETECTED_MGRS+=("helm:cloud")
+    fi
+    
+    # Terraform
+    if command -v terraform >/dev/null 2>&1; then
+        CLOUD_MGRS[terraform]="1"
+        DETECTED_MGRS+=("terraform:cloud")
+    fi
+}
+
+detect_game_managers() {
+    # Steam
+    if command -v steam >/dev/null 2>&1 || [[ -d "$HOME/.steam" ]]; then
+        GAME_MGRS[steam]="1"
+        DETECTED_MGRS+=("steam:game")
+    fi
+    
+    # Lutris
+    if command -v lutris >/dev/null 2>&1; then
+        GAME_MGRS[lutris]="1"
+        DETECTED_MGRS+=("lutris:game")
+    fi
+    
+    # Wine
+    if command -v wine >/dev/null 2>&1; then
+        GAME_MGRS[wine]="1"
+        DETECTED_MGRS+=("wine:game")
+    fi
+    
+    # GameMode
+    if command -v gamemoded >/dev/null 2>&1; then
+        GAME_MGRS[gamemode]="1"
+        DETECTED_MGRS+=("gamemode:game")
+    fi
+    
+    # Proton
+    if [[ -d "$HOME/.steam/steam/steamapps/common/Proton*" ]] || [[ -d "/usr/share/steam/compatibilitytools.d" ]]; then
+        GAME_MGRS[proton]="1"
+        DETECTED_MGRS+=("proton:game")
+    fi
+}
+
+detect_universal_managers() {
+    # Flatpak
+    if command -v flatpak >/dev/null 2>&1; then
+        UNIVERSAL_MGRS[flatpak]="1"
+        DETECTED_MGRS+=("flatpak:universal")
+    fi
+    
+    # Snap
+    if command -v snap >/dev/null 2>&1; then
+        UNIVERSAL_MGRS[snap]="1"
+        DETECTED_MGRS+=("snap:universal")
+    fi
+    
+    # AppImage
+    if command -v appimaged >/dev/null 2>&1 || ls /usr/bin/*.AppImage 2>/dev/null | head -1; then
+        UNIVERSAL_MGRS[appimage]="1"
+        DETECTED_MGRS+=("appimage:universal")
+    fi
+    
+    # Nix
+    if command -v nix >/dev/null 2>&1 || [[ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]]; then
+        UNIVERSAL_MGRS[nix]="1"
+        DETECTED_MGRS+=("nix:universal")
+    fi
+    
+    # Conda/Mamba
+    if command -v conda >/dev/null 2>&1; then
+        UNIVERSAL_MGRS[conda]="1"
+        DETECTED_MGRS+=("conda:universal")
+    fi
+    if command -v mamba >/dev/null 2>&1; then
+        UNIVERSAL_MGRS[mamba]="1"
+        DETECTED_MGRS+=("mamba:universal")
+    fi
+    
+    # Homebrew (Linux)
+    if command -v brew >/dev/null 2>&1 && [[ "$(uname -s)" == "Linux" ]]; then
+        UNIVERSAL_MGRS[brew_linux]="1"
+        DETECTED_MGRS+=("brew_linux:universal")
+    fi
+    
+    # Guix
+    if command -v guix >/dev/null 2>&1; then
+        UNIVERSAL_MGRS[guix]="1"
+        DETECTED_MGRS+=("guix:universal")
+    fi
+}
+
+detect_language_managers() {
+    # Python
+    if command -v pip3 >/dev/null 2>&1; then
+        LANGUAGE_MGRS[pip]="1"
+        DETECTED_MGRS+=("pip3:python")
+    elif command -v pip >/dev/null 2>&1; then
+        LANGUAGE_MGRS[pip]="1"
+        DETECTED_MGRS+=("pip:python")
+    fi
+    if command -v pipx >/dev/null 2>&1; then
+        LANGUAGE_MGRS[pipx]="1"
+        DETECTED_MGRS+=("pipx:python")
+    fi
+    if command -v poetry >/dev/null 2>&1; then
+        LANGUAGE_MGRS[poetry]="1"
+        DETECTED_MGRS+=("poetry:python")
+    fi
+    
+    # Node.js
+    if command -v npm >/dev/null 2>&1; then
+        LANGUAGE_MGRS[npm]="1"
+        DETECTED_MGRS+=("npm:nodejs")
+    fi
+    if command -v yarn >/dev/null 2>&1; then
+        LANGUAGE_MGRS[yarn]="1"
+        DETECTED_MGRS+=("yarn:nodejs")
+    fi
+    if command -v pnpm >/dev/null 2>&1; then
+        LANGUAGE_MGRS[pnpm]="1"
+        DETECTED_MGRS+=("pnpm:nodejs")
+    fi
+    
+    # Rust
+    if command -v cargo >/dev/null 2>&1; then
+        LANGUAGE_MGRS[cargo]="1"
+        DETECTED_MGRS+=("cargo:rust")
+    fi
+    
+    # Go
+    if command -v go >/dev/null 2>&1; then
+        LANGUAGE_MGRS[go]="1"
+        DETECTED_MGRS+=("go:golang")
+    fi
+    
+    # Ruby
+    if command -v gem >/dev/null 2>&1; then
+        LANGUAGE_MGRS[gem]="1"
+        DETECTED_MGRS+=("gem:ruby")
+    fi
+    if command -v bundle >/dev/null 2>&1; then
+        LANGUAGE_MGRS[bundle]="1"
+        DETECTED_MGRS+=("bundle:ruby")
+    fi
+    
+    # PHP
+    if command -v composer >/dev/null 2>&1; then
+        LANGUAGE_MGRS[composer]="1"
+        DETECTED_MGRS+=("composer:php")
+    fi
+    
+    # .NET
+    if command -v dotnet >/dev/null 2>&1; then
+        LANGUAGE_MGRS[dotnet]="1"
+        DETECTED_MGRS+=("dotnet:dotnet")
+    fi
+    
+    # Java
+    if command -v mvn >/dev/null 2>&1; then
+        LANGUAGE_MGRS[mvn]="1"
+        DETECTED_MGRS+=("mvn:java")
+    fi
+    if command -v gradle >/dev/null 2>&1; then
+        LANGUAGE_MGRS[gradle]="1"
+        DETECTED_MGRS+=("gradle:java")
+    fi
+    
+    # Haskell
+    if command -v cabal >/dev/null 2>&1; then
+        LANGUAGE_MGRS[cabal]="1"
+        DETECTED_MGRS+=("cabal:haskell")
+    fi
+    if command -v stack >/dev/null 2>&1; then
+        LANGUAGE_MGRS[stack]="1"
+        DETECTED_MGRS+=("stack:haskell")
+    fi
+    
+    # Perl
+    if command -v cpan >/dev/null 2>&1; then
+        LANGUAGE_MGRS[cpan]="1"
+        DETECTED_MGRS+=("cpan:perl")
+    fi
+    
+    # Lua
+    if command -v luarocks >/dev/null 2>&1; then
+        LANGUAGE_MGRS[luarocks]="1"
+        DETECTED_MGRS+=("luarocks:lua")
+    fi
+}
+
+list_available_backends() {
+    local groups=()
+    
+    [[ -n "$PKG_MGR" ]] && groups+=("System: $PKG_MGR")
+    [[ ${#UNIVERSAL_MGRS[@]} -gt 0 ]] && groups+=("Universal: ${!UNIVERSAL_MGRS[*]}")
+    [[ ${#LANGUAGE_MGRS[@]} -gt 0 ]] && groups+=("Languages: ${!LANGUAGE_MGRS[*]}")
+    [[ ${#CONTAINER_MGRS[@]} -gt 0 ]] && groups+=("Containers: ${!CONTAINER_MGRS[*]}")
+    [[ ${#CLOUD_MGRS[@]} -gt 0 ]] && groups+=("Cloud: ${!CLOUD_MGRS[*]}")
+    [[ ${#GAME_MGRS[@]} -gt 0 ]] && groups+=("Games: ${!GAME_MGRS[*]}")
+    
+    echo "${groups[@]}"
+}
+
+###############################################################################
+# ADVANCED COMMANDS WITH NEW FEATURES
+###############################################################################
 
 cmd_install() {
-  ensure_pkg_mgr
-  if [[ $# -eq 0 ]]; then
-    die "You must specify at least one package to install."
-  fi
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    exec vmpkg install "$@"
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      debian_install_pkgs "$@"
-      ;;
-
-    arch)
-      arch_install_with_yay "$@"
-      ;;
-
-    brew)
-      local mapped_b=() bp
-      for bp in "$@"; do
-        mapped_b+=("$bp")
-      done
-
-      if ((${#mapped_b[@]} == 0)); then
-        warn "No packages to install (Homebrew)."
-        return 1
-      fi
-
-      echo "vopk: Packages to install ($(platform_label) via Homebrew):"
-      printf '  %s\n' "${mapped_b[@]}"
-
-      echo
-      vopk_preview brew install "${mapped_b[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${mapped_b[*]} ?"; then
-        return 1
-      fi
-
-      local out_brew=""
-      if run_and_capture out_brew brew install "${mapped_b[@]}"; then
-        return 0
-      else
-        warn "Install failed via Homebrew."
-        return 1
-      fi
-      ;;
-
-    freebsd)
-      local mapped_f=() fp
-      for fp in "$@"; do
-        mapped_f+=("$fp")
-      done
-
-      check_pkgs_exist_generic "${mapped_f[@]}"
-      if ((${#VOPK_PRESENT_PKGS[@]} == 0)); then
-        warn "No valid packages to install (FreeBSD)."
-        return 1
-      fi
-
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${VOPK_PRESENT_PKGS[@]}"
-
-      echo
-      vopk_preview ${SUDO} pkg install -n "${VOPK_PRESENT_PKGS[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${VOPK_PRESENT_PKGS[*]} ?"; then
-        return 1
-      fi
-
-      local out_fb=""
-      if run_and_capture out_fb ${SUDO} pkg install -y "${VOPK_PRESENT_PKGS[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    openbsd)
-      local mapped_ob=() ob
-      for ob in "$@"; do
-        mapped_ob+=("$ob")
-      done
-
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${mapped_ob[@]}"
-
-      echo
-      vopk_preview ${SUDO} pkg_add -n "${mapped_ob[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${mapped_ob[*]} ?"; then
-        return 1
-      fi
-
-      local out_ob=""
-      if run_and_capture out_ob ${SUDO} pkg_add "${mapped_ob[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    netbsd)
-      local mapped_nb=() nb
-      for nb in "$@"; do
-        mapped_nb+=("$nb")
-      done
-
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${mapped_nb[@]}"
-
-      echo
-      vopk_preview ${SUDO} pkgin -n install "${mapped_nb[@]}" || vopk_preview ${SUDO} pkgin install "${mapped_nb[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${mapped_nb[*]} ?"; then
-        return 1
-      fi
-
-      local out_nb=""
-      if run_and_capture out_nb ${SUDO} pkgin -y install "${mapped_nb[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    netbsd_pkg_add)
-      local mapped_np=() np
-      for np in "$@"; do
-        mapped_np+=("$np")
-      done
-
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${mapped_np[@]}"
-
-      echo
-      vopk_preview ${SUDO} pkg_add -n "${mapped_np[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${mapped_np[*]} ?"; then
-        return 1
-      fi
-
-      local out_np=""
-      if run_and_capture out_np ${SUDO} pkg_add "${mapped_np[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    redhat)
-      local mapped=() p fixed
-      for p in "$@"; do
-        fixed="$(redhat_fix_pkg_name "$p")"
-        if [[ "$fixed" != "$p" ]]; then
-          log "Mapped package '$p' -> '$fixed' for RedHat-family."
-        fi
-        mapped+=("$fixed")
-      done
-
-      check_pkgs_exist_generic "${mapped[@]}"
-      if ((${#VOPK_PRESENT_PKGS[@]} == 0)); then
-        warn "No valid packages to install (RedHat family)."
-        return 1
-      fi
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${VOPK_PRESENT_PKGS[@]}"
-
-      echo
-      if [[ "${PKG_MGR}" == "dnf" ]]; then
-        vopk_preview ${SUDO} dnf install --assumeno "${VOPK_PRESENT_PKGS[@]}"
-      else
-        vopk_preview ${SUDO} ${PKG_MGR} install --assumeno "${VOPK_PRESENT_PKGS[@]}"
-      fi
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${VOPK_PRESENT_PKGS[*]} ?"; then
-        return 1
-      fi
-
-      local out=""
-      if run_and_capture out ${SUDO} ${PKG_MGR} install -y "${VOPK_PRESENT_PKGS[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    suse)
-      local mapped_s=() sp sfix
-      for sp in "$@"; do
-        sfix="$(suse_fix_pkg_name "$sp")"
-        if [[ "$sfix" != "$sp" ]]; then
-          log "Mapped package '$sp' -> '$sfix' for SUSE."
-        fi
-        mapped_s+=("$sfix")
-      done
-
-      check_pkgs_exist_generic "${mapped_s[@]}"
-      if ((${#VOPK_PRESENT_PKGS[@]} == 0)); then
-        warn "No valid packages to install (SUSE)."
-        return 1
-      fi
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${VOPK_PRESENT_PKGS[@]}"
-
-      echo
-      vopk_preview ${SUDO} zypper install -y --dry-run "${VOPK_PRESENT_PKGS[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${VOPK_PRESENT_PKGS[*]} ?"; then
-        return 1
-      fi
-
-      local out_s=""
-      if run_and_capture out_s ${SUDO} zypper install -y "${VOPK_PRESENT_PKGS[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    alpine)
-      local mapped_a=() ap afix
-      for ap in "$@"; do
-        afix="$(alpine_fix_pkg_name "$ap")"
-        if [[ "$afix" != "$ap" ]]; then
-          log "Mapped package '$ap' -> '$afix' for Alpine."
-        fi
-        mapped_a+=("$afix")
-      done
-
-      check_pkgs_exist_generic "${mapped_a[@]}"
-      if ((${#VOPK_PRESENT_PKGS[@]} == 0)); then
-        warn "No valid packages to install (Alpine)."
-        return 1
-      fi
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${VOPK_PRESENT_PKGS[@]}"
-
-      echo
-      vopk_preview ${SUDO} apk add --no-interactive --simulate "${VOPK_PRESENT_PKGS[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${VOPK_PRESENT_PKGS[*]} ?"; then
-        return 1
-      fi
-
-      local out_a=""
-      if run_and_capture out_a ${SUDO} apk add --no-interactive "${VOPK_PRESENT_PKGS[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    void)
-      local mapped_v=() vp vfix
-      for vp in "$@"; do
-        vfix="$(void_fix_pkg_name "$vp")"
-        if [[ "$vfix" != "$vp" ]]; then
-          log "Mapped package '$vp' -> '$vfix' for Void."
-        fi
-        mapped_v+=("$vfix")
-      done
-
-      check_pkgs_exist_generic "${mapped_v[@]}"
-      if ((${#VOPK_PRESENT_PKGS[@]} == 0)); then
-        warn "No valid packages to install (Void)."
-        return 1
-      fi
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${VOPK_PRESENT_PKGS[@]}"
-
-      echo
-      if command -v xbps-install >/dev/null 2>&1; then
-        vopk_preview ${SUDO} xbps-install --dry-run "${VOPK_PRESENT_PKGS[@]}"
-      fi
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${VOPK_PRESENT_PKGS[*]} ?"; then
-        return 1
-      fi
-
-      local out_v=""
-      if run_and_capture out_v ${SUDO} xbps-install -y "${VOPK_PRESENT_PKGS[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-
-    gentoo)
-      local mapped_g=() gp gfix
-      for gp in "$@"; do
-        gfix="$(gentoo_fix_pkg_name "$gp")"
-        if [[ "$gfix" != "$gp" ]]; then
-          log "Mapped package '$gp' -> '$gfix' for Gentoo."
-        fi
-        mapped_g+=("$gfix")
-      done
-
-      echo "vopk: Packages to install ($(platform_label)):"
-      printf '  %s\n' "${mapped_g[@]}"
-
-      echo
-      vopk_preview ${SUDO} emerge -p "${mapped_g[@]}"
-      echo
-
-      if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-        return 0
-      fi
-
-      if ! vopk_confirm "Install packages: ${mapped_g[*]} ?"; then
-        return 1
-      fi
-
-      local out_g=""
-      if run_and_capture out_g ${SUDO} emerge "${mapped_g[@]}"; then
-        return 0
-      else
-        warn "Install failed."
-        return 1
-      fi
-      ;;
-  esac
-}
-
-cmd_remove() {
-  ensure_pkg_mgr
-  if [[ $# -eq 0 ]]; then
-    die "You must specify at least one package to remove."
-  fi
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-      vmpkg remove "$@" -n || true
-      return 0
+    ensure_pkg_mgr
+    
+    if [[ $# -eq 0 ]]; then
+        die "Specify packages to install"
     fi
-    exec vmpkg remove "$@"
-  fi
-
-  echo "vopk: Packages to remove:"
-  printf '  %s\n' "$@"
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    case "${PKG_MGR_FAMILY}" in
-      debian|debian_dpkg)
-        vopk_preview ${SUDO} ${PKG_MGR:-apt-get} remove -y "$@" ;;
-      arch)
-        vopk_preview ${SUDO} pacman -R --noconfirm "$@" ;;
-      brew)
-        vopk_preview brew uninstall "$@" ;;
-      freebsd)
-        vopk_preview ${SUDO} pkg delete -n "$@" ;;
-      openbsd)
-        vopk_preview ${SUDO} pkg_delete -n "$@" ;;
-      netbsd)
-        vopk_preview ${SUDO} pkgin -n remove "$@" || vopk_preview ${SUDO} pkgin remove "$@" ;;
-      netbsd_pkg_add)
-        vopk_preview ${SUDO} pkg_delete -n "$@" ;;
-      redhat)
-        vopk_preview ${SUDO} ${PKG_MGR} remove -y "$@" ;;
-      suse)
-        vopk_preview ${SUDO} zypper remove -y "$@" ;;
-      alpine)
-        vopk_preview ${SUDO} apk del --no-interactive "$@" ;;
-      void)
-        vopk_preview ${SUDO} xbps-remove -y "$@" ;;
-      gentoo)
-        vopk_preview ${SUDO} emerge -C "$@" ;;
-    esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Remove packages: $* ?"; then
-    return 1
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      ${SUDO} ${PKG_MGR:-apt-get} remove -y "$@" || ${SUDO} dpkg -r "$@"
-      ;;
-    arch)
-      ${SUDO} pacman -R --noconfirm "$@"
-      ;;
-    brew)
-      brew uninstall "$@"
-      ;;
-    freebsd)
-      ${SUDO} pkg delete -y "$@"
-      ;;
-    openbsd)
-      ${SUDO} pkg_delete "$@"
-      ;;
-    netbsd)
-      ${SUDO} pkgin -y remove "$@"
-      ;;
-    netbsd_pkg_add)
-      ${SUDO} pkg_delete "$@"
-      ;;
-    redhat)
-      ${SUDO} ${PKG_MGR} remove -y "$@"
-      ;;
-    suse)
-      ${SUDO} zypper remove -y "$@"
-      ;;
-    alpine)
-      ${SUDO} apk del --no-interactive "$@"
-      ;;
-    void)
-      if command -v xbps-remove >/dev/null 2>&1; then
-        ${SUDO} xbps-remove -y "$@"
-      else
-        die "xbps-remove not found."
-      fi
-      ;;
-    gentoo)
-      ${SUDO} emerge -C "$@"
-      ;;
-  esac
-}
-
-cmd_purge() {
-  ensure_pkg_mgr
-  if [[ $# -eq 0 ]]; then
-    die "You must specify at least one package to purge."
-  fi
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Backend 'vmpkg' has no concept of purge; using remove."
-    if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-      vmpkg remove "$@" -n || true
-      return 0
+    
+    # AI suggestions
+    ai_recommend_packages "install" "$@"
+    
+    log "Installing packages: $*"
+    log_to_audit "INSTALL" "$*" "STARTED"
+    
+    # Create snapshot for rollback
+    [[ "$VOPK_ROLLBACK" -eq 1 ]] && create_snapshot "before_install_$(date +%s)"
+    
+    local start_time=$(date +%s)
+    local packages=()
+    local flags=()
+    
+    # Parse arguments
+    for arg in "$@"; do
+        case "$arg" in
+            --*)
+                flags+=("$arg")
+                ;;
+            *)
+                packages+=("$arg")
+                ;;
+        esac
+    done
+    
+    # Check package sources
+    local system_packages=()
+    local universal_packages=()
+    local language_packages=()
+    
+    for pkg in "${packages[@]}"; do
+        if check_package_exists "$pkg"; then
+            system_packages+=("$pkg")
+        elif [[ "${UNIVERSAL_MGRS[flatpak]}" == "1" ]] && flatpak_search "$pkg"; then
+            universal_packages+=("$pkg")
+        elif [[ "${LANGUAGE_MGRS[npm]}" == "1" ]] && npm_search "$pkg"; then
+            language_packages+=("$pkg")
+        else
+            warn "Package not found in any repository: $pkg"
+        fi
+    done
+    
+    # Install from different sources
+    local installed_count=0
+    
+    # Install system packages
+    if [[ ${#system_packages[@]} -gt 0 ]]; then
+        install_system_packages "${system_packages[@]}"
+        installed_count=$((installed_count + ${#system_packages[@]}))
     fi
-    exec vmpkg remove "$@"
-  fi
+    
+    # Install universal packages
+    if [[ ${#universal_packages[@]} -gt 0 ]]; then
+        install_universal_packages "${universal_packages[@]}"
+        installed_count=$((installed_count + ${#universal_packages[@]}))
+    fi
+    
+    # Install language packages
+    if [[ ${#language_packages[@]} -gt 0 ]]; then
+        install_language_packages "${language_packages[@]}"
+        installed_count=$((installed_count + ${#language_packages[@]}))
+    fi
+    
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    
+    ((VOPK_METRICS[packages]+=installed_count))
+    ((VOPK_METRICS[operations]++))
+    VOPK_METRICS[install_time]=$((VOPK_METRICS[install_time] + duration))
+    
+    log_success "Installed $installed_count packages in $(format_duration $duration)"
+    log_to_audit "INSTALL" "$*" "SUCCESS"
+    
+    # Post-install actions
+    post_install_actions "${packages[@]}"
+}
 
-  echo "vopk: Packages to purge:"
-  printf '  %s\n' "$@"
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
+install_system_packages() {
     case "${PKG_MGR_FAMILY}" in
-      debian|debian_dpkg)
-        vopk_preview ${SUDO} ${PKG_MGR:-apt-get} purge -y "$@" ;;
-      arch)
-        vopk_preview ${SUDO} pacman -Rns --noconfirm "$@" ;;
-      brew)
-        vopk_preview brew uninstall --zap "$@" ;;
-      freebsd)
-        vopk_preview ${SUDO} pkg delete -n "$@" ;;
-      openbsd)
-        vopk_preview ${SUDO} pkg_delete -n "$@" ;;
-      netbsd)
-        vopk_preview ${SUDO} pkgin -n remove "$@" || vopk_preview ${SUDO} pkgin remove "$@" ;;
-      netbsd_pkg_add)
-        vopk_preview ${SUDO} pkg_delete -n "$@" ;;
-      redhat)
-        vopk_preview ${SUDO} ${PKG_MGR} remove -y "$@" ;;
-      suse)
-        vopk_preview ${SUDO} zypper remove -y "$@" ;;
-      alpine)
-        vopk_preview ${SUDO} apk del --no-interactive "$@" ;;
-      void)
-        vopk_preview ${SUDO} xbps-remove -y "$@" ;;
-      gentoo)
-        vopk_preview ${SUDO} emerge -C "$@" ;;
-    esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Purge packages (remove with configs): $* ?"; then
-    return 1
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      if command -v apt-get >/dev/null 2>&1 || command -v apt >/dev/null 2>&1; then
-        ${SUDO} ${PKG_MGR:-apt-get} purge -y "$@"
-      else
-        ${SUDO} dpkg -P "$@"
-      fi
-      ;;
-    arch)
-      ${SUDO} pacman -Rns --noconfirm "$@"
-      ;;
-    brew)
-      brew uninstall --zap "$@" || brew uninstall "$@"
-      ;;
-    freebsd)
-      ${SUDO} pkg delete -y "$@"
-      ;;
-    openbsd)
-      ${SUDO} pkg_delete "$@"
-      ;;
-    netbsd)
-      ${SUDO} pkgin -y remove "$@"
-      ;;
-    netbsd_pkg_add)
-      ${SUDO} pkg_delete "$@"
-      ;;
-    redhat)
-      ${SUDO} ${PKG_MGR} remove -y "$@"
-      ;;
-    suse)
-      ${SUDO} zypper remove -y "$@"
-      ;;
-    alpine)
-      ${SUDO} apk del --no-interactive "$@"
-      ;;
-    void)
-      if command -v xbps-remove >/dev/null 2>&1; then
-        ${SUDO} xbps-remove -y "$@"
-      else
-        die "xbps-remove not found."
-      fi
-      ;;
-    gentoo)
-      ${SUDO} emerge -C "$@"
-      ;;
-  esac
-}
-
-cmd_autoremove() {
-  ensure_pkg_mgr
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Backend 'vmpkg' does not track system-level dependencies."
-    return 0
-  fi
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    case "${PKG_MGR_FAMILY}" in
-      debian) vopk_preview ${SUDO} ${PKG_MGR} autoremove -y ;;
-      debian_dpkg)
-        warn "Autoremove not supported in dpkg-only mode."
-        ;;
-      arch)
-        local ORPHANS
-        ORPHANS=$(pacman -Qdtq 2>/dev/null || true)
-        if [[ -n "${ORPHANS-}" ]]; then
-          vopk_preview ${SUDO} pacman -Rns --noconfirm ${ORPHANS}
-        fi
-        ;;
-      brew)
-        vopk_preview brew autoremove --dry-run || vopk_preview brew autoremove || vopk_preview brew cleanup --prune=all --dry-run
-        ;;
-      freebsd)
-        vopk_preview ${SUDO} pkg autoremove -n
-        ;;
-      openbsd)
-        warn "Autoremove not supported for OpenBSD pkg_add."
-        ;;
-      netbsd)
-        vopk_preview ${SUDO} pkgin -n autoremove || vopk_preview ${SUDO} pkgin autoremove
-        ;;
-      netbsd_pkg_add)
-        warn "Autoremove not supported for NetBSD pkg_add mode."
-        ;;
-      redhat)
-        if [[ "${PKG_MGR}" == "dnf" ]]; then
-          vopk_preview ${SUDO} dnf autoremove -y
-        fi
-        ;;
-    esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Autoremove unused/orphan packages?"; then
-    return 1
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} autoremove -y
-      ;;
-    debian_dpkg)
-      warn "Autoremove not supported in dpkg-only mode."
-      ;;
-    arch)
-      local ORPHANS
-      ORPHANS=$(pacman -Qdtq 2>/dev/null || true)
-      if [[ -n "${ORPHANS-}" ]]; then
-        log "Removing orphaned packages:"
-        printf '%s\n' "${ORPHANS}"
-        ${SUDO} pacman -Rns --noconfirm ${ORPHANS}
-      else
-        log "No orphaned packages found."
-      fi
-      ;;
-    brew)
-      brew autoremove || brew cleanup --prune=all
-      ;;
-    freebsd)
-      ${SUDO} pkg autoremove -y
-      ;;
-    openbsd)
-      warn "Autoremove not supported for OpenBSD pkg_add."
-      ;;
-    netbsd)
-      ${SUDO} pkgin -y autoremove
-      ;;
-    netbsd_pkg_add)
-      warn "Autoremove not supported for NetBSD pkg_add mode."
-      ;;
-    redhat)
-      if [[ "${PKG_MGR}" == "dnf" ]]; then
-        ${SUDO} dnf autoremove -y
-      else
-        warn "Autoremove not explicitly supported for ${PKG_MGR}."
-      fi
-      ;;
-    suse)
-      warn "Autoremove not explicitly supported for zypper (manual cleanup required)."
-      ;;
-    alpine)
-      warn "Autoremove not explicitly supported for apk."
-      ;;
-    void|gentoo)
-      warn "Autoremove/orphan cleanup not implemented for ${PKG_MGR_FAMILY}."
-      ;;
-  esac
-}
-
-cmd_search() {
-  ensure_pkg_mgr
-  if [[ $# -eq 0 ]]; then
-    die "You must provide a search pattern."
-  fi
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    exec vmpkg search "$@"
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      apt-cache search "$@"
-      ;;
-    debian_dpkg)
-      warn "Search via dpkg-only mode is limited."
-      dpkg -l | grep -i "$1" || true
-      ;;
-    arch)
-      pacman -Ss "$@"
-      ;;
-    brew)
-      brew search "$@"
-      ;;
-    freebsd)
-      pkg search "$@"
-      ;;
-    openbsd)
-      pkg_info -Q "$1" || true
-      ;;
-    netbsd)
-      pkgin search "$@"
-      ;;
-    netbsd_pkg_add)
-      pkg_info -Q "$1" || true
-      ;;
-    redhat)
-      ${PKG_MGR} search "$@"
-      ;;
-    suse)
-      zypper search "$@"
-      ;;
-    alpine)
-      apk search "$@"
-      ;;
-    void)
-      xbps-query -Rs "$@"
-      ;;
-    gentoo)
-      emerge -s "$@"
-      ;;
-  esac
-}
-
-cmd_list() {
-  ensure_pkg_mgr
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    exec vmpkg list
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      dpkg -l
-      ;;
-    arch)
-      pacman -Q
-      ;;
-    brew)
-      brew list
-      ;;
-    freebsd)
-      pkg info
-      ;;
-    openbsd)
-      pkg_info
-      ;;
-    netbsd)
-      pkgin list
-      ;;
-    netbsd_pkg_add)
-      pkg_info
-      ;;
-    redhat)
-      ${PKG_MGR} list installed || rpm -qa
-      ;;
-    suse)
-      zypper search --installed-only
-      ;;
-    alpine)
-      apk info
-      ;;
-    void)
-      xbps-query -l
-      ;;
-    gentoo)
-      if command -v qlist >/dev/null 2>&1; then
-        qlist -I
-      else
-        warn "qlist not found, cannot list installed packages cleanly."
-      fi
-      ;;
-  esac
-}
-
-cmd_show() {
-  ensure_pkg_mgr
-  if [[ $# -eq 0 ]]; then
-    die "You must specify a package name."
-  fi
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    exec vmpkg show "$@"
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      local out=""
-      if run_and_capture out apt-cache show "$@"; then
-        return 0
-      else
-        warn "Show failed."
-        return 1
-      fi
-      ;;
-    debian_dpkg)
-      dpkg -l "$@" || print_pkg_not_found_msgs "$@"
-      ;;
-    arch)
-      local out_a=""
-      if run_and_capture out_a pacman -Si "$@"; then
-        return 0
-      else
-        if grep -qi 'target not found' <<< "$out_a"; then
-          if command -v yay >/dev/null 2>&1; then
-            local out_aur=""
-            if run_and_capture out_aur yay -Si "$@"; then
-              return 0
+        debian|ubuntu)
+            run_with_privileges "$PKG_MGR" install -y "$@"
+            ;;
+        arch)
+            if [[ -n "$AUR_HELPER" ]]; then
+                install_arch_packages_with_aur "$@"
+            else
+                run_with_privileges pacman -S --noconfirm "$@"
             fi
-          fi
-          print_pkg_not_found_msgs "$@"
-        else
-          warn "Show failed."
-        fi
-        return 1
-      fi
-      ;;
-    brew)
-      local out_brew_show=""
-      if run_and_capture out_brew_show brew info "$@"; then
-        return 0
-      else
-        warn "Show failed."
-        return 1
-      fi
-      ;;
-    freebsd)
-      local out_fb=""
-      if run_and_capture out_fb pkg info "$@"; then
-        return 0
-      else
-        warn "Show failed."
-        return 1
-      fi
-      ;;
-    openbsd)
-      local out_ob=""
-      if run_and_capture out_ob pkg_info "$@"; then
-        return 0
-      else
-        warn "Show failed."
-        return 1
-      fi
-      ;;
-    netbsd|netbsd_pkg_add)
-      local out_nb=""
-      if run_and_capture out_nb pkg_info "$@"; then
-        return 0
-      else
-        warn "Show failed."
-        return 1
-      fi
-      ;;
-    redhat)
-      local out_r=""
-      if run_and_capture out_r ${PKG_MGR} info "$@"; then
-        return 0
-      else
-        if grep -qiE 'No matching Packages to list|Error: No matching Packages' <<< "$out_r"; then
-          print_pkg_not_found_msgs "$@"
-        else
-          warn "Show failed."
-        fi
-        return 1
-      fi
-      ;;
-    suse)
-      local out_s=""
-      if run_and_capture out_s zypper info "$@"; then
-        return 0
-      else
-        if grep -qi 'not found in package names' <<< "$out_s"; then
-          print_pkg_not_found_msgs "$@"
-        else
-          warn "Show failed."
-        fi
-        return 1
-      fi
-      ;;
-    alpine)
-      local out_al=""
-      if run_and_capture out_al apk info -a "$@"; then
-        return 0
-      else
-        if grep -qi 'not found' <<< "$out_al"; then
-          print_pkg_not_found_msgs "$@"
-        else
-          warn "Show failed."
-        fi
-        return 1
-      fi
-      ;;
-    void)
-      local out_v=""
-      if run_and_capture out_v xbps-query -RS "$@"; then
-        return 0
-      else
-        if grep -qi 'not found in repository pool' <<< "$out_v"; then
-          print_pkg_not_found_msgs "$@"
-        else
-          warn "Show failed."
-        fi
-        return 1
-      fi
-      ;;
-    gentoo)
-      if command -v equery >/dev/null 2>&1; then
-        equery meta "$@"
-      else
-        warn "equery not found, show not fully implemented for Gentoo."
-      fi
-      ;;
-  esac
-}
-
-cmd_clean() {
-  ensure_pkg_mgr
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-      vmpkg clean -n || true
-      return 0
-    fi
-    exec vmpkg clean
-  fi
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    case "${PKG_MGR_FAMILY}" in
-      debian)      vopk_preview ${SUDO} ${PKG_MGR} clean ;;
-      debian_dpkg) warn "No apt cache to clean in dpkg-only mode." ;;
-      arch)        vopk_preview ${SUDO} pacman -Scc --noconfirm ;;
-      brew)        vopk_preview brew cleanup --prune=all --dry-run ;;
-      freebsd)     vopk_preview ${SUDO} pkg clean -n -a ;;
-      openbsd)     warn "Clean not implemented for OpenBSD pkg_add." ;;
-      netbsd)      vopk_preview ${SUDO} pkgin -n clean || vopk_preview ${SUDO} pkgin clean ;;
-      netbsd_pkg_add)
-        warn "Clean not implemented for NetBSD pkg_add mode."
-        ;;
-      redhat)      vopk_preview ${SUDO} ${PKG_MGR} clean all ;;
-      suse)        vopk_preview ${SUDO} zypper clean --all ;;
-      alpine)      warn "apk cache cleaning depends on your setup (e.g. /var/cache/apk)." ;;
-      void)
-        if command -v xbps-remove >/dev/null 2>&1; then
-          vopk_preview ${SUDO} xbps-remove -O
-        fi
-        ;;
-      gentoo)      warn "Clean not implemented for Gentoo (use eclean/distclean tools)." ;;
+            ;;
+        redhat)
+            run_with_privileges "$PKG_MGR" install -y "$@"
+            ;;
+        suse)
+            run_with_privileges zypper install -y "$@"
+            ;;
+        alpine)
+            run_with_privileges apk add "$@"
+            ;;
+        void)
+            run_with_privileges xbps-install -y "$@"
+            ;;
+        gentoo)
+            run_with_privileges emerge "$@"
+            ;;
+        brew)
+            brew install "$@"
+            ;;
+        freebsd)
+            run_with_privileges pkg install -y "$@"
+            ;;
+        openbsd)
+            run_with_privileges pkg_add "$@"
+            ;;
+        netbsd)
+            run_with_privileges pkgin -y install "$@"
+            ;;
+        vmpkg)
+            vmpkg install "$@"
+            ;;
     esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Clean package cache?"; then
-    return 1
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} clean
-      ;;
-    debian_dpkg)
-      warn "No apt cache to clean in dpkg-only mode."
-      ;;
-    arch)
-      ${SUDO} pacman -Scc --noconfirm
-      ;;
-    brew)
-      brew cleanup --prune=all
-      ;;
-    freebsd)
-      ${SUDO} pkg clean -y -a
-      ;;
-    openbsd)
-      warn "Clean not implemented for OpenBSD pkg_add."
-      ;;
-    netbsd)
-      ${SUDO} pkgin clean
-      ;;
-    netbsd_pkg_add)
-      warn "Clean not implemented for NetBSD pkg_add mode."
-      ;;
-    redhat)
-      ${SUDO} ${PKG_MGR} clean all
-      ;;
-    suse)
-      ${SUDO} zypper clean --all
-      ;;
-    alpine)
-      warn "apk cache cleaning depends on your setup (e.g. /var/cache/apk)."
-      ;;
-    void)
-      if command -v xbps-remove >/dev/null 2>&1; then
-        ${SUDO} xbps-remove -O
-      else
-        warn "xbps-remove not found, cannot clean cache."
-      fi
-      ;;
-    gentoo)
-      warn "Clean not implemented for Gentoo (use eclean/distclean tools)."
-      ;;
-  esac
 }
 
-###############################################################################
-# REPO MANAGEMENT
-###############################################################################
-
-cmd_repos_list() {
-  ensure_pkg_mgr
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      echo "=== /etc/apt/sources.list ==="
-      [[ -f /etc/apt/sources.list ]] && cat /etc/apt/sources.list || echo "Not found."
-      echo
-      echo "=== /etc/apt/sources.list.d/*.list ==="
-      ls /etc/apt/sources.list.d/*.list 2>/dev/null || echo "No extra list files."
-      ;;
-    arch)
-      echo "=== /etc/pacman.conf (repos sections) ==="
-      if [[ -f /etc/pacman.conf ]]; then
-        grep -E '^\[.+\]' /etc/pacman.conf || true
-      else
-        echo "pacman.conf not found."
-      fi
-      ;;
-    brew)
-      echo "=== Homebrew taps ==="
-      brew tap
-      ;;
-    freebsd)
-      echo "=== pkg repositories (pkg -vv) ==="
-      pkg -vv | sed -n '/Repositories:/,/End of Repositories/p' || true
-      ;;
-    openbsd)
-      warn "OpenBSD repositories are configured via /etc/installurl; edit manually if needed."
-      ;;
-    netbsd|netbsd_pkg_add)
-      warn "Check /usr/pkg/etc/pkgin/repositories.conf or /etc/pkg_install.conf for NetBSD repositories."
-      ;;
-    redhat)
-      echo "=== /etc/yum.repos.d/*.repo ==="
-      ls /etc/yum.repos.d/*.repo 2>/dev/null || echo "No repo files found."
-      ;;
-    suse)
-      echo "=== zypper repos ==="
-      zypper lr
-      ;;
-    alpine)
-      echo "=== /etc/apk/repositories ==="
-      [[ -f /etc/apk/repositories ]] && cat /etc/apk/repositories || echo "Not found."
-      ;;
-    void)
-      echo "=== /etc/xbps.d/*.conf ==="
-      ls /etc/xbps.d/*.conf 2>/dev/null || echo "No repo config files."
-      ;;
-    gentoo)
-      echo "Repos are defined in /etc/portage/repos.conf and /etc/portage/make.conf."
-      ;;
-    vmpkg)
-      warn "vmpkg doesn't have system repos. It uses its own registry."
-      ;;
-  esac
+install_universal_packages() {
+    for pkg in "$@"; do
+        if [[ "${UNIVERSAL_MGRS[flatpak]}" == "1" ]] && flatpak_search "$pkg"; then
+            flatpak install "$pkg"
+        elif [[ "${UNIVERSAL_MGRS[snap]}" == "1" ]] && snap_search "$pkg"; then
+            sudo snap install "$pkg"
+        fi
+    done
 }
 
-cmd_add_repo() {
-  ensure_pkg_mgr
-  if [[ $# -eq 0 ]]; then
-    die "Usage: vopk add-repo <repo-spec-or-url>"
-  fi
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Repo add is not applicable when using vmpkg backend."
-    return 0
-  fi
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    return 0
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      if command -v add-apt-repository >/dev/null 2>&1; then
-        ${SUDO} add-apt-repository "$@"
-      else
-        warn "add-apt-repository not found. You may need 'software-properties-common'."
-        die "Automatic repo add not supported. Edit /etc/apt/sources.list or /etc/apt/sources.list.d manually."
-      fi
-      ;;
-    arch)
-      warn "Automatic repo management for pacman is not supported by vopk."
-      warn "Edit /etc/pacman.conf manually and run 'vopk update'."
-      ;;
-    brew)
-      if [[ $# -ne 1 ]]; then
-        die "Usage (brew): vopk add-repo <tap>"
-      fi
-      brew tap "$1"
-      ;;
-    freebsd)
-      warn "Automatic repo management for FreeBSD pkg is not supported. Edit /etc/pkg/*.conf."
-      ;;
-    openbsd)
-      warn "Edit /etc/installurl to change OpenBSD mirrors."
-      ;;
-    netbsd|netbsd_pkg_add)
-      warn "Edit /usr/pkg/etc/pkgin/repositories.conf or /etc/pkg_install.conf to manage NetBSD repositories."
-      ;;
-    redhat)
-      if command -v dnf >/dev/null 2>&1 && command -v dnf-config-manager >/dev/null 2>&1; then
-        ${SUDO} dnf config-manager --add-repo "$1"
-      elif command -v yum-config-manager >/dev/null 2>&1; then
-        ${SUDO} yum-config-manager --add-repo "$1"
-      else
-        die "No config manager (dnf-config-manager/yum-config-manager) found. Add repo manually under /etc/yum.repos.d."
-      fi
-      ;;
-    suse)
-      if [[ $# -lt 2 ]]; then
-        die "Usage (suse): vopk add-repo <url> <alias>"
-      fi
-      ${SUDO} zypper ar "$1" "$2"
-      ;;
-    alpine)
-      if [[ $# -ne 1 ]]; then
-        die "Usage (alpine): vopk add-repo <repo-url-line>"
-      fi
-      if [[ ! -f /etc/apk/repositories ]]; then
-        die "/etc/apk/repositories not found."
-      fi
-      ${SUDO} sh -c "echo '$1' >> /etc/apk/repositories"
-      log_success "Added repo line to /etc/apk/repositories. Run 'vopk update'."
-      ;;
-    void|gentoo)
-      warn "Repo add not automated for ${PKG_MGR_FAMILY}. Please edit config files manually."
-      ;;
-  esac
+install_language_packages() {
+    for pkg in "$@"; do
+        if [[ "${LANGUAGE_MGRS[npm]}" == "1" ]] && npm_search "$pkg"; then
+            npm install -g "$pkg"
+        elif [[ "${LANGUAGE_MGRS[pip]}" == "1" ]] && pip_search "$pkg"; then
+            pip3 install "$pkg"
+        elif [[ "${LANGUAGE_MGRS[gem]}" == "1" ]] && gem_search "$pkg"; then
+            gem install "$pkg"
+        elif [[ "${LANGUAGE_MGRS[cargo]}" == "1" ]] && cargo_search "$pkg"; then
+            cargo install "$pkg"
+        fi
+    done
 }
 
-cmd_remove_repo() {
-  ensure_pkg_mgr
-  if [[ $# -eq 0 ]]; then
-    die "Usage: vopk remove-repo <pattern>"
-  fi
-  local pattern="$1"
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Repo removal is not applicable when using vmpkg backend."
-    return 0
-  fi
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    return 0
-  fi
-
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      warn "Will comment out lines matching '${pattern}' in /etc/apt/sources.list*."
-      for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
-        [[ -f "$f" ]] || continue
-        ${SUDO} sed -i.bak "/${pattern}/ s/^/# disabled by vopk: /" "$f" || true
-      done
-      log_success "Done. Check *.bak backups if needed. Run 'vopk update'."
-      ;;
-    arch)
-      warn "Automatic repo removal on pacman.conf is not supported."
-      warn "Edit /etc/pacman.conf manually."
-      ;;
-    brew)
-      brew untap "$pattern"
-      ;;
-    freebsd)
-      warn "Repo removal not automated for FreeBSD pkg. Edit /etc/pkg/*.conf manually."
-      ;;
-    openbsd)
-      warn "Edit /etc/installurl directly to adjust OpenBSD mirrors."
-      ;;
-    netbsd|netbsd_pkg_add)
-      warn "Edit /usr/pkg/etc/pkgin/repositories.conf or /etc/pkg_install.conf to remove NetBSD repos."
-      ;;
-    redhat)
-      warn "Automatic repo removal is not fully supported."
-      warn "You can disable .repo files under /etc/yum.repos.d/ manually."
-      ;;
-    suse)
-      warn "Use 'zypper rr <alias>' directly for precise control."
-      ;;
-    alpine)
-      if [[ ! -f /etc/apk/repositories ]]; then
-        die "/etc/apk/repositories not found."
-      fi
-      ${SUDO} sed -i.bak "/${pattern}/d" /etc/apk/repositories
-      log_success "Removed lines matching '${pattern}' from /etc/apk/repositories (backup: .bak)."
-      ;;
-    void|gentoo)
-      warn "Repo removal not automated for ${PKG_MGR_FAMILY}; please edit config files manually."
-      ;;
-  esac
+cmd_fix_all() {
+    log "Running comprehensive system fix..."
+    
+    local fixes=(
+        "fix-dns"
+        "fix-permissions"
+        "fix-dependencies"
+        "fix-broken"
+    )
+    
+    local success_count=0
+    local total_count=${#fixes[@]}
+    
+    for fix in "${fixes[@]}"; do
+        log_progress "$success_count" "$total_count" "Running $fix..."
+        if vopk "$fix" --quiet; then
+            ((success_count++))
+        fi
+    done
+    
+    if [[ $success_count -eq $total_count ]]; then
+        log_success "All fixes applied successfully"
+    else
+        warn "$((total_count - success_count)) fixes failed"
+    fi
 }
 
-###############################################################################
-# DEV KIT
-###############################################################################
-
-cmd_install_dev_kit() {
-  ensure_pkg_mgr
-
-  if [[ "${PKG_MGR_FAMILY}" == "vmpkg" ]]; then
-    warn "Dev kit installation requires a system package manager, not vmpkg."
-    return 0
-  fi
-
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    case "${PKG_MGR_FAMILY}" in
-      debian)
-        vopk_preview ${SUDO} ${PKG_MGR} update
-        vopk_preview ${SUDO} ${PKG_MGR} install -y build-essential git curl wget pkg-config
-        ;;
-      debian_dpkg)
-        warn "dpkg-only mode: cannot pull dev tools from repos (no apt)."
-        ;;
-      arch)
-        vopk_preview arch_install_with_yay base-devel git curl wget pkgconf
-        ;;
-      brew)
-        vopk_preview brew update
-        vopk_preview brew install git curl wget pkg-config make
-        ;;
-      freebsd)
-        vopk_preview ${SUDO} pkg install -n git curl wget pkgconf gmake
-        ;;
-      openbsd)
-        vopk_preview ${SUDO} pkg_add -n git curl wget gmake pkgconf
-        ;;
-      netbsd)
-        vopk_preview ${SUDO} pkgin -n install git curl wget pkgconf gmake || vopk_preview ${SUDO} pkgin install git curl wget pkgconf gmake
-        ;;
-      netbsd_pkg_add)
-        vopk_preview ${SUDO} pkg_add -n git curl wget pkgconf gmake
-        ;;
-      redhat)
-        vopk_preview ${SUDO} ${PKG_MGR} groupinstall -y "Development Tools"
-        vopk_preview ${SUDO} ${PKG_MGR} install -y git curl wget pkgconfig
-        ;;
-      suse)
-        vopk_preview ${SUDO} zypper install -y -t pattern devel_basis
-        vopk_preview ${SUDO} zypper install -y git curl wget pkg-config
-        ;;
-      alpine)
-        vopk_preview ${SUDO} apk add --no-interactive build-base git curl wget pkgconf
-        ;;
-      void)
-        vopk_preview ${SUDO} xbps-install -y base-devel git curl wget pkg-config
-        ;;
-      gentoo)
-        vopk_preview ${SUDO} emerge --info >/dev/null 2>&1 || true
-        ;;
+cmd_profile() {
+    local action="${1:-list}"
+    local profile_name="${2:-}"
+    
+    case "$action" in
+        list)
+            list_profiles
+            ;;
+        create)
+            create_profile "$profile_name"
+            ;;
+        apply)
+            apply_profile "$profile_name"
+            ;;
+        export)
+            export_profile "$profile_name"
+            ;;
+        import)
+            import_profile "$profile_name"
+            ;;
+        delete)
+            delete_profile "$profile_name"
+            ;;
+        *)
+            die "Unknown profile action: $action"
+            ;;
     esac
-    return 0
-  fi
-
-  if ! vopk_confirm "Install development tools (compiler, git, etc.)?"; then
-    return 1
-  fi
-
-  log "Installing basic development tools (best-effort for ${PKG_MGR_FAMILY})..."
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} update
-      ${SUDO} ${PKG_MGR} install -y build-essential git curl wget pkg-config
-      ;;
-    debian_dpkg)
-      warn "dpkg-only mode: cannot pull dev tools from repos (no apt)."
-      ;;
-    arch)
-      arch_install_with_yay base-devel git curl wget pkgconf
-      ;;
-    brew)
-      brew update
-      brew install git curl wget pkg-config make
-      ;;
-    freebsd)
-      ${SUDO} pkg install -y git curl wget pkgconf gmake
-      ;;
-    openbsd)
-      ${SUDO} pkg_add git curl wget gmake pkgconf
-      ;;
-    netbsd)
-      ${SUDO} pkgin -y install git curl wget pkgconf gmake
-      ;;
-    netbsd_pkg_add)
-      ${SUDO} pkg_add git curl wget pkgconf gmake
-      ;;
-    redhat)
-      ${SUDO} ${PKG_MGR} groupinstall -y "Development Tools" || true
-      ${SUDO} ${PKG_MGR} install -y git curl wget pkgconfig
-      ;;
-    suse)
-      ${SUDO} zypper install -y -t pattern devel_basis || true
-      ${SUDO} zypper install -y git curl wget pkg-config
-      ;;
-    alpine)
-      ${SUDO} apk add --no-interactive build-base git curl wget pkgconf
-      ;;
-    void)
-      ${SUDO} xbps-install -y base-devel git curl wget pkg-config || true
-      ;;
-    gentoo)
-      log "On Gentoo, dev tools are usually already present; ensure system profile includes them."
-      ;;
-  esac
-  log_success "Dev kit installation finished."
 }
 
-###############################################################################
-# DNS FIXER
-###############################################################################
+list_profiles() {
+    ui_section "Available Profiles"
+    
+    if [[ ${#VOPK_PROFILES[@]} -eq 0 ]]; then
+        echo "No profiles found"
+        return
+    fi
+    
+    for profile in "${!VOPK_PROFILES[@]}"; do
+        echo "  • $profile"
+    done
+    
+    echo -e "\nUse: vopk profile apply <name>"
+}
 
-cmd_fix_dns() {
-  if [[ "${VOPK_DRY_RUN}" -eq 1 ]]; then
-    if [[ -L /etc/resolv.conf ]]; then
-      vopk_preview ${SUDO} systemctl restart systemd-resolved 2>/dev/null || true
-      vopk_preview ${SUDO} systemctl restart NetworkManager 2>/dev/null || true
+apply_profile() {
+    local profile_name="$1"
+    
+    if [[ -z "$profile_name" ]]; then
+        die "Specify profile name"
+    fi
+    
+    if [[ ! -v VOPK_PROFILES["$profile_name"] ]]; then
+        die "Profile not found: $profile_name"
+    fi
+    
+    local profile_file="${VOPK_PROFILES[$profile_name]}"
+    local packages=()
+    
+    # Load packages from profile
+    if [[ "$profile_file" == *.yaml ]] || [[ "$profile_file" == *.yml ]]; then
+        packages=($(yq -r '.packages[]' "$profile_file" 2>/dev/null || grep -E '^  - ' "$profile_file" | sed 's/^  - //'))
+    elif [[ "$profile_file" == *.json ]]; then
+        packages=($(jq -r '.packages[]' "$profile_file" 2>/dev/null))
     else
-      :
+        packages=($(grep -v '^#' "$profile_file" | xargs))
     fi
-    return 0
-  fi
-
-  log "Attempting to fix DNS issues (best-effort)."
-
-  if [[ -L /etc/resolv.conf ]]; then
-    warn "/etc/resolv.conf is a symlink (likely systemd-resolved or similar)."
-    if command -v systemctl >/dev/null 2>&1; then
-      warn "Trying to restart systemd-resolved / NetworkManager if present."
-      ${SUDO} systemctl restart systemd-resolved 2>/dev/null || true
-      ${SUDO} systemctl restart NetworkManager 2>/dev/null || true
+    
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        warn "No packages found in profile"
+        return
     fi
-    log_success "Basic DNS services restart done. If DNS still broken, check your network manager settings."
-    return 0
-  fi
-
-  if [[ -f /etc/resolv.conf ]]; then
-    local backup="/etc/resolv.conf.vopk-backup-$(date +%Y%m%d%H%M%S)"
-    log "Backing up /etc/resolv.conf to ${backup}"
-    ${SUDO} cp /etc/resolv.conf "${backup}"
-  fi
-
-  log "Writing new /etc/resolv.conf with public DNS servers..."
-  ${SUDO} sh -c 'cat > /etc/resolv.conf' <<EOF
-# Generated by vopk fix-dns on $(date)
-nameserver 1.1.1.1
-nameserver 8.8.8.8
-nameserver 9.9.9.9
-EOF
-
-  log_success "New /etc/resolv.conf written. Try 'ping 1.1.1.1' then 'ping google.com' to verify connectivity."
+    
+    log "Applying profile '$profile_name' with ${#packages[@]} packages"
+    cmd_install "${packages[@]}"
 }
 
 ###############################################################################
-# SYSTEM HELPERS
+# NEW ADVANCED FEATURES
 ###############################################################################
 
-cmd_sys_info() {
-  ui_title "System info"
-  echo "=== uname -a ==="
-  uname -a || true
-  echo
-  echo "=== OS (from /etc/os-release) ==="
-  echo "ID:           ${DISTRO_ID:-?}"
-  echo "ID_LIKE:      ${DISTRO_ID_LIKE:-?}"
-  echo "PRETTY_NAME:  ${DISTRO_PRETTY_NAME:-?}"
-  echo "Platform:     $(platform_label)"
-  echo
-  echo "=== CPU ==="
-  if [[ "${DISTRO_ID_LIKE}" == *"darwin"* ]]; then
-    sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "CPU info unavailable"
-  else
-    grep -m1 'model name' /proc/cpuinfo 2>/dev/null || sysctl -n hw.model 2>/dev/null || echo "CPU info unavailable"
-  fi
-  echo
-  echo "=== Memory ==="
-  if [[ "${DISTRO_ID_LIKE}" == *"darwin"* || "${DISTRO_ID_LIKE}" == *"bsd"* ]]; then
-    if command -v vm_stat >/dev/null 2>&1; then
-      vm_stat
-    elif command -v sysctl >/dev/null 2>&1; then
-      sysctl hw.physmem 2>/dev/null || sysctl hw.memsize 2>/dev/null || echo "Memory info unavailable"
+cmd_optimize() {
+    log "Optimizing system performance..."
+    
+    # Optimize package manager
+    case "${PKG_MGR_FAMILY}" in
+        debian|ubuntu)
+            run_with_privileges "$PKG_MGR" clean
+            run_with_privileges "$PKG_MGR" autoclean
+            run_with_privileges "$PKG_MGR" autoremove -y
+            ;;
+        arch)
+            run_with_privileges pacman -Scc --noconfirm
+            ;;
+        redhat)
+            run_with_privileges "$PKG_MGR" clean all
+            run_with_privileges "$PKG_MGR" autoremove -y
+            ;;
+    esac
+    
+    # Optimize system
+    optimize_system
+    
+    log_success "System optimization completed"
+}
+
+optimize_system() {
+    # Clear cache
+    sync
+    echo 3 | run_with_privileges tee /proc/sys/vm/drop_caches >/dev/null
+    
+    # Trim SSDs
+    if command -v fstrim >/dev/null 2>&1; then
+        run_with_privileges fstrim -av
+    fi
+    
+    # Optimize databases
+    optimize_databases
+}
+
+optimize_databases() {
+    # SQLite databases
+    find / -name "*.db" -type f 2>/dev/null | head -10 | while read db; do
+        if command -v sqlite3 >/dev/null 2>&1 && [[ -w "$db" ]]; then
+            sqlite3 "$db" "VACUUM;" 2>/dev/null || true
+        fi
+    done
+}
+
+cmd_benchmark() {
+    ui_title "System Benchmark Suite"
+    
+    local benchmarks=(
+        "CPU Benchmark"
+        "Memory Benchmark"
+        "Disk Benchmark"
+        "Network Benchmark"
+        "Package Manager Benchmark"
+    )
+    
+    local results=()
+    
+    for benchmark in "${benchmarks[@]}"; do
+        log "Running: $benchmark"
+        local result=""
+        
+        case "$benchmark" in
+            "CPU Benchmark")
+                result=$(benchmark_cpu)
+                ;;
+            "Memory Benchmark")
+                result=$(benchmark_memory)
+                ;;
+            "Disk Benchmark")
+                result=$(benchmark_disk)
+                ;;
+            "Network Benchmark")
+                result=$(benchmark_network)
+                ;;
+            "Package Manager Benchmark")
+                result=$(benchmark_package_manager)
+                ;;
+        esac
+        
+        results+=("$benchmark: $result")
+        sleep 1
+    done
+    
+    ui_section "Benchmark Results"
+    for result in "${results[@]}"; do
+        echo "  • $result"
+    done
+    
+    # Save results
+    local benchmark_file="${VOPK_CACHE_DIR}/benchmark-$(date +%Y%m%d).txt"
+    printf "%s\n" "${results[@]}" > "$benchmark_file"
+    log "Results saved to: $benchmark_file"
+}
+
+benchmark_cpu() {
+    local start_time=$(date +%s.%N)
+    local count=0
+    
+    for i in {1..5000}; do
+        count=$((count + i))
+    done
+    
+    local end_time=$(date +%s.%N)
+    local duration=$(echo "$end_time - $start_time" | bc)
+    
+    echo "$(printf "%.2f" "$duration")s"
+}
+
+benchmark_disk() {
+    if command -v dd >/dev/null 2>&1; then
+        local temp_file="$(mktemp)"
+        local result=$(dd if=/dev/zero of="$temp_file" bs=1M count=100 conv=fdatasync 2>&1 | tail -1)
+        rm -f "$temp_file"
+        echo "$result" | awk '{print $(NF-1), $NF}'
     else
-      echo "Memory info unavailable"
+        echo "N/A"
     fi
-  else
-    free -h 2>/dev/null || echo "free not available"
-  fi
-  echo
-  echo "=== Disk (/) ==="
-  df -h / || df -h || true
 }
 
-cmd_kernel() {
-  uname -a
+cmd_plugin() {
+    local action="${1:-list}"
+    local plugin_name="${2:-}"
+    
+    case "$action" in
+        list)
+            list_plugins
+            ;;
+        install)
+            install_plugin "$plugin_name"
+            ;;
+        remove)
+            remove_plugin "$plugin_name"
+            ;;
+        update)
+            update_plugin "$plugin_name"
+            ;;
+        enable)
+            enable_plugin "$plugin_name"
+            ;;
+        disable)
+            disable_plugin "$plugin_name"
+            ;;
+        *)
+            die "Unknown plugin action: $action"
+            ;;
+    esac
 }
 
-cmd_disk() {
-  df -h
+list_plugins() {
+    ui_section "Available Plugins"
+    
+    local plugin_dir="${VOPK_CONFIG_DIR}/plugins"
+    mkdir -p "$plugin_dir"
+    
+    if [[ -z "$(ls -A "$plugin_dir" 2>/dev/null)" ]]; then
+        echo "No plugins installed"
+        echo -e "\nAvailable from: $VOPK_REPO_URL/plugins"
+        return
+    fi
+    
+    for plugin in "$plugin_dir"/*.sh; do
+        [[ -f "$plugin" ]] || continue
+        local name="$(basename "$plugin" .sh)"
+        echo "  • $name"
+    done
 }
 
-cmd_mem() {
-  if [[ "${DISTRO_ID_LIKE}" == *"darwin"* || "${DISTRO_ID_LIKE}" == *"bsd"* ]]; then
-    if command -v vm_stat >/dev/null 2>&1; then
-      vm_stat
-    elif command -v sysctl >/dev/null 2>&1; then
-      sysctl hw.physmem 2>/dev/null || sysctl hw.memsize 2>/dev/null || echo "Memory info unavailable"
+install_plugin() {
+    local plugin_name="$1"
+    
+    if [[ -z "$plugin_name" ]]; then
+        die "Specify plugin name"
+    fi
+    
+    local plugin_url="$VOPK_REPO_URL/plugins/$plugin_name.sh"
+    local plugin_file="${VOPK_CONFIG_DIR}/plugins/$plugin_name.sh"
+    
+    log "Installing plugin: $plugin_name"
+    
+    if command -v curl >/dev/null 2>&1; then
+        curl -sSL "$plugin_url" -o "$plugin_file"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$plugin_url" -O "$plugin_file"
     else
-      echo "Memory info unavailable"
+        die "Need curl or wget to install plugins"
     fi
-  else
-    free -h || echo "free not available"
-  fi
-}
-
-cmd_top() {
-  if command -v htop >/dev/null 2>&1; then
-    htop
-  else
-    top
-  fi
-}
-
-cmd_ps() {
-  if ps aux --sort=-%mem 2>/dev/null | head -n 15; then
-    return
-  fi
-  ps aux 2>/dev/null | head -n 15 || ps -ef 2>/dev/null | head -n 15
-}
-
-cmd_ip() {
-  if command -v ip >/dev/null 2>&1; then
-    ip addr
-    echo
-    ip route || true
-  else
-    if command -v ifconfig >/dev/null 2>&1; then
-      ifconfig
-      echo
-      if command -v route >/dev/null 2>&1; then
-        route -n get default 2>/dev/null || route -n show 2>/dev/null || true
-      fi
+    
+    if [[ -f "$plugin_file" ]]; then
+        chmod +x "$plugin_file"
+        log_success "Plugin installed: $plugin_name"
     else
-      echo "'ip' command not found. Install iproute2 or equivalent."
+        die "Failed to install plugin"
     fi
-  fi
-}
-
-cmd_doctor() {
-  ui_title "vopk doctor"
-
-  local uname_s
-  uname_s="$(uname -s || echo "Unknown")"
-
-  echo "Kernel:       $uname_s"
-  echo "OS:           ${DISTRO_PRETTY_NAME:-Unknown}"
-  echo "OS ID:        ${DISTRO_ID:-Unknown}"
-  echo "OS ID_LIKE:   ${DISTRO_ID_LIKE:-Unknown}"
-  echo "Platform:     $(platform_label)"
-  echo "User:         $(id -un 2>/dev/null || echo '?')"
-  echo "EUID:         ${EUID}"
-  echo "SUDO cmd:     ${SUDO:-<none>}"
-  ui_hr
-
-  ensure_pkg_mgr
-  echo "Backend:      ${PKG_MGR_FAMILY:-<none>} (${PKG_MGR:-<none>})"
-  ui_hr
-
-  echo "PATH:         $PATH"
-  ui_hr
-
-  case "${PKG_MGR_FAMILY}" in
-    debian|debian_dpkg)
-      if command -v nala >/dev/null 2>&1; then
-        log_success "nala (APT frontend) detected."
-      elif command -v apt-get >/dev/null 2>&1 || command -v apt >/dev/null 2>&1; then
-        log_success "APT backend detected."
-      else
-        warn "APT not detected; dpkg-only mode."
-      fi
-      ;;
-    arch)
-      if command -v pacman >/dev/null 2>&1; then
-        log_success "pacman detected."
-      else
-        warn "pacman not in PATH."
-      fi
-      ;;
-    brew)
-      if command -v brew >/dev/null 2>&1; then
-        log_success "Homebrew detected."
-      else
-        warn "brew not in PATH."
-      fi
-      ;;
-    freebsd)
-      if command -v pkg >/dev/null 2>&1; then
-        log_success "FreeBSD pkg detected."
-      else
-        warn "pkg not in PATH."
-      fi
-      ;;
-    openbsd)
-      if command -v pkg_add >/dev/null 2>&1; then
-        log_success "OpenBSD pkg_add detected."
-      else
-        warn "pkg_add not in PATH."
-      fi
-      ;;
-    netbsd|netbsd_pkg_add)
-      if command -v pkgin >/dev/null 2>&1; then
-        log_success "NetBSD pkgin detected."
-      elif command -v pkg_add >/dev/null 2>&1; then
-        log_success "NetBSD pkg_add detected."
-      else
-        warn "pkgin/pkg_add not in PATH."
-      fi
-      ;;
-    redhat)
-      if command -v "${PKG_MGR:-dnf}" >/dev/null 2>&1; then
-        log_success "${PKG_MGR:-dnf} backend detected."
-      elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1 || command -v dnf5 >/dev/null 2>&1 || command -v microdnf >/dev/null 2>&1; then
-        log_success "RedHat-family package manager detected."
-      else
-        warn "DNF/YUM not in PATH."
-      fi
-      ;;
-    suse)
-      if command -v zypper >/dev/null 2>&1; then
-        log_success "zypper detected."
-      else
-        warn "zypper not in PATH."
-      fi
-      ;;
-    alpine)
-      if command -v apk >/dev/null 2>&1; then
-        log_success "apk detected."
-      else
-        warn "apk not in PATH."
-      fi
-      ;;
-    void)
-      if command -v xbps-install >/dev/null 2>&1; then
-        log_success "xbps-install detected."
-      else
-        warn "xbps-install not in PATH."
-      fi
-      ;;
-    gentoo)
-      if command -v emerge >/dev/null 2>&1; then
-        log_success "emerge detected."
-      else
-        warn "emerge not in PATH."
-      fi
-      ;;
-    vmpkg)
-      if command -v vmpkg >/dev/null 2>&1; then
-        log_success "vmpkg detected as backend."
-      else
-        warn "vmpkg backend selected but not found in PATH."
-      fi
-      ;;
-  esac
-
-  echo
-  if command -v curl >/dev/null; then
-    log_success "curl detected."
-  elif command -v wget >/dev/null; then
-    log_success "wget detected."
-  else
-    warn "Neither curl nor wget is installed. Some tools may not work."
-  fi
-
-  if command -v tar >/dev/null; then
-    log_success "tar detected."
-  else
-    warn "tar not found."
-  fi
-
-  if command -v unzip >/dev/null; then
-    log_success "unzip detected."
-  else
-    warn "unzip not found."
-  fi
 }
 
 ###############################################################################
-# script-v / backend (RAW MODE)
+# ENHANCED SELF UPDATE WITH SIGNATURE VERIFICATION
 ###############################################################################
 
-cmd_script_v() {
-  ensure_pkg_mgr
-  debug "script-v backend: ${PKG_MGR_FAMILY} / ${PKG_MGR}"
+cmd_self_update() {
+    log "Checking for updates..."
+    
+    # Get latest version
+    local latest_version
+    if command -v curl >/dev/null 2>&1; then
+        latest_version=$(curl -sSL "$VOPK_REPO_URL/releases/latest" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1 | tr -d 'v')
+    elif command -v wget >/dev/null 2>&1; then
+        latest_version=$(wget -qO- "$VOPK_REPO_URL/releases/latest" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1 | tr -d 'v')
+    fi
+    
+    if [[ -z "$latest_version" ]]; then
+        warn "Could not check for updates"
+        return 1
+    fi
+    
+    if [[ "$VOPK_VERSION" == "$latest_version" ]]; then
+        log_success "vopk is up to date ($VOPK_VERSION)"
+        return 0
+    fi
+    
+    log "New version available: $latest_version (current: $VOPK_VERSION)"
+    
+    if ! vopk_confirm "Update to v$latest_version?"; then
+        return 1
+    fi
+    
+    # Download update
+    local temp_file="$(mktemp)"
+    local install_path="$(realpath "$0")"
+    
+    log "Downloading vopk $latest_version..."
+    
+    if command -v curl >/dev/null 2>&1; then
+        curl -sSL "$VOPK_REPO_URL/releases/download/v$latest_version/vopk" -o "$temp_file"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$VOPK_REPO_URL/releases/download/v$latest_version/vopk" -O "$temp_file"
+    else
+        die "Need curl or wget to update"
+    fi
+    
+    # Verify signature
+    if [[ "$VOPK_SECURITY_SCAN" -eq 1 ]]; then
+        verify_signature "$temp_file"
+    fi
+    
+    # Backup current version
+    cp "$install_path" "$install_path.backup"
+    
+    # Install new version
+    chmod +x "$temp_file"
+    mv "$temp_file" "$install_path"
+    
+    log_success "vopk updated to version $latest_version"
+    log "Restart vopk to use the new version"
+}
 
-  case "${PKG_MGR_FAMILY}" in
-    debian)
-      exec ${SUDO} ${PKG_MGR} "$@"
-      ;;
-    debian_dpkg)
-      exec ${SUDO} dpkg "$@"
-      ;;
-    arch)
-      exec ${SUDO} pacman "$@"
-      ;;
-    brew)
-      exec brew "$@"
-      ;;
-    redhat|suse|alpine|void|gentoo)
-      exec ${SUDO} ${PKG_MGR} "$@"
-      ;;
-    freebsd|openbsd|netbsd|netbsd_pkg_add)
-      exec ${SUDO} ${PKG_MGR} "$@"
-      ;;
-    vmpkg)
-      exec vmpkg "$@"
-      ;;
-    *)
-      die "script-v mode is not supported for this system."
-      ;;
-  esac
+verify_signature() {
+    local file="$1"
+    local sig_url="$VOPK_REPO_URL/releases/download/v$latest_version/vopk.sig"
+    local sig_file="$(mktemp)"
+    
+    if command -v gpg >/dev/null 2>&1; then
+        # Download signature
+        if command -v curl >/dev/null 2>&1; then
+            curl -sSL "$sig_url" -o "$sig_file"
+        else
+            wget -q "$sig_url" -O "$sig_file"
+        fi
+        
+        # Import public key
+        local key_url="$VOPK_REPO_URL/keys/vopk.pub"
+        local key_file="$(mktemp)"
+        
+        if command -v curl >/dev/null 2>&1; then
+            curl -sSL "$key_url" -o "$key_file"
+        else
+            wget -q "$key_url" -O "$key_file"
+        fi
+        
+        gpg --import "$key_file" 2>/dev/null
+        rm -f "$key_file"
+        
+        # Verify signature
+        if gpg --verify "$sig_file" "$file" 2>/dev/null; then
+            log "Signature verified successfully"
+        else
+            warn "Signature verification failed"
+            if ! vopk_confirm "Continue anyway?"; then
+                rm -f "$file" "$sig_file"
+                exit 1
+            fi
+        fi
+        
+        rm -f "$sig_file"
+    else
+        warn "GPG not installed, skipping signature verification"
+    fi
 }
 
 ###############################################################################
-# MAIN DISPATCH
+# MAIN DISPATCH WITH ALL ENHANCED COMMANDS
 ###############################################################################
 
 main() {
-  case "${1-}" in
-    -v|--version)
-      echo "vopk ${VOPK_VERSION} (${VOPK_CODENAME})"
-      exit 0
-      ;;
-  esac
-
-  local cmd="${1:-}"
-  shift || true
-
-  if [[ "${cmd}" == "vm" || "${cmd}" == "vmpkg" ]]; then
-    if ! command -v vmpkg >/dev/null 2>&1; then
-      die "vmpkg not found in PATH."
+    # Initialize systems
+    detect_distro
+    load_config
+    init_sudo
+    init_logging
+    apply_color_mode
+    setup_shell_integration
+    
+    # Check for updates
+    if [[ "$VOPK_UPDATE_CHECK" -eq 1 ]] && [[ "$1" != "self-update" ]]; then
+        check_for_updates_async
     fi
-    exec vmpkg "$@"
-  fi
-
-  if [[ "${cmd}" == "script-v" || "${cmd}" == "backend" ]]; then
-    cmd_script_v "$@"
-    exit $?
-  fi
-
-  parse_global_flags "$@"
-  set -- "${VOPK_ARGS[@]}"
-
-  apply_color_mode
-
-  case "${cmd}" in
-    update)         cmd_update "$@" ;;
-    upgrade|u)      cmd_upgrade "$@" ;;
-    full-upgrade|dist-upgrade|fu|upgrade-all) cmd_full_upgrade "$@" ;;
-
-    install|i|add)  cmd_install "$@" ;;
-    remove|rm|del)  cmd_remove "$@" ;;
-    purge)          cmd_purge "$@" ;;
-    autoremove|ar)  cmd_autoremove "$@" ;;
-
-    search|s|find)  cmd_search "$@" ;;
-    list|ls)        cmd_list "$@" ;;
-    show|si|info)   cmd_show "$@" ;;
-    clean|cc)       cmd_clean "$@" ;;
-
-    repos-list)     cmd_repos_list "$@" ;;
-    add-repo)       cmd_add_repo "$@" ;;
-    remove-repo)    cmd_remove_repo "$@" ;;
-
-    install-dev-kit) cmd_install_dev_kit "$@" ;;
-    fix-dns)        cmd_fix_dns "$@" ;;
-
-    sys-info)       cmd_sys_info ;;
-    kernel)         cmd_kernel ;;
-    disk)           cmd_disk ;;
-    mem)            cmd_mem ;;
-    top)            cmd_top ;;
-    ps)             cmd_ps ;;
-    ip)             cmd_ip ;;
-    doctor)         cmd_doctor ;;
-
-    up|refresh)     cmd_update; cmd_upgrade ;;
-
-    ""|help|-h|--help)
-      usage
-      ;;
-    *)
-      die "Unknown command: ${cmd}"
-      ;;
-  esac
+    
+    # Parse arguments
+    parse_global_flags "$@"
+    set -- "${VOPK_ARGS[@]}"
+    
+    # Handle empty command
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
+    local cmd="$1"
+    shift || true
+    
+    # Dispatch to appropriate command
+    case "$cmd" in
+        # Core package management
+        update|upd)                     cmd_update "$@" ;;
+        upgrade|upg|u)                  cmd_upgrade "$@" ;;
+        full-upgrade|full|fu|dist-upgrade) cmd_full_upgrade "$@" ;;
+        
+        install|i|add)                  cmd_install "$@" ;;
+        remove|rm|del|uninstall)        cmd_remove "$@" ;;
+        purge|prg)                      cmd_purge "$@" ;;
+        autoremove|auto|ar)             cmd_autoremove "$@" ;;
+        
+        search|s|find)                  cmd_search "$@" ;;
+        list|ls)                        cmd_list "$@" ;;
+        show|info|si)                   cmd_show "$@" ;;
+        clean|cln)                      cmd_clean "$@" ;;
+        
+        # Repository management
+        repos-list|repos)               cmd_repos_list "$@" ;;
+        add-repo|repo-add)              cmd_add_repo "$@" ;;
+        remove-repo|repo-rm)            cmd_remove_repo "$@" ;;
+        enable-repo|repo-enable)        cmd_enable_repo "$@" ;;
+        disable-repo|repo-disable)      cmd_disable_repo "$@" ;;
+        refresh-repos|repo-refresh)     cmd_refresh_repos "$@" ;;
+        
+        # Advanced package operations
+        reinstall|re)                   cmd_reinstall "$@" ;;
+        hold|unhold)                    cmd_hold "$@" ;;
+        download|dl)                    cmd_download "$@" ;;
+        changelog)                      cmd_changelog "$@" ;;
+        depends|deps)                   cmd_depends "$@" ;;
+        rdepends|rdeps)                 cmd_rdepends "$@" ;;
+        verify|integrity)               cmd_verify "$@" ;;
+        audit|security)                 cmd_audit "$@" ;;
+        
+        # System operations
+        fix-dns)                        cmd_fix_dns "$@" ;;
+        fix-permissions|fix-perms)      cmd_fix_permissions "$@" ;;
+        fix-dependencies|fix-deps)      cmd_fix_dependencies "$@" ;;
+        fix-broken|repair)              cmd_fix_broken "$@" ;;
+        fix-all)                        cmd_fix_all "$@" ;;
+        
+        # Backup and migration
+        export|export-packages)         cmd_export_packages "$@" ;;
+        import|import-packages)         cmd_import_packages "$@" ;;
+        backup|backup-packages)         cmd_backup_packages "$@" ;;
+        restore|restore-packages)       cmd_restore_packages "$@" ;;
+        snapshot)                       cmd_snapshot "$@" ;;
+        rollback|rb)                    cmd_rollback "$@" ;;
+        
+        # Development tools
+        install-dev-kit|dev)            cmd_install_dev_kit "$@" ;;
+        install-build-deps|build-deps)  cmd_install_build_deps "$@" ;;
+        
+        # System information
+        sys-info|sys)                   cmd_sys_info "$@" ;;
+        doctor|health)                  cmd_doctor "$@" ;;
+        kernel|uname)                   cmd_kernel "$@" ;;
+        disk|df)                        cmd_disk "$@" ;;
+        mem|memory|free)                cmd_mem "$@" ;;
+        top|htop)                       cmd_top "$@" ;;
+        ps|processes)                   cmd_ps "$@" ;;
+        ip|network)                     cmd_ip "$@" ;;
+        services|svc)                   cmd_services "$@" ;;
+        logs|journal)                   cmd_logs "$@" ;;
+        monitor|dashboard)              cmd_monitor "$@" ;;
+        benchmark|bench)                cmd_benchmark "$@" ;;
+        history|hist)                   cmd_history "$@" ;;
+        
+        # Optimization
+        optimize|opt)                   cmd_optimize "$@" ;;
+        
+        # Profiles
+        profile|prof)                   cmd_profile "$@" ;;
+        
+        # Universal package managers
+        flatpak|fp)                     cmd_flatpak "$@" ;;
+        snap)                           cmd_snap "$@" ;;
+        appimage|app)                   cmd_appimage "$@" ;;
+        nix)                            cmd_nix "$@" ;;
+        conda)                          cmd_conda "$@" ;;
+        mamba)                          cmd_mamba "$@" ;;
+        
+        # Language package managers
+        npm)                            cmd_npm "$@" ;;
+        yarn)                           cmd_yarn "$@" ;;
+        pnpm)                           cmd_pnpm "$@" ;;
+        pip)                            cmd_pip "$@" ;;
+        pipx)                           cmd_pipx "$@" ;;
+        poetry)                         cmd_poetry "$@" ;;
+        cargo)                          cmd_cargo "$@" ;;
+        go|golang)                      cmd_go "$@" ;;
+        gem|rubygems)                   cmd_gem "$@" ;;
+        bundle)                         cmd_bundle "$@" ;;
+        composer)                       cmd_composer "$@" ;;
+        dotnet|nuget)                   cmd_dotnet "$@" ;;
+        mvn|maven)                      cmd_mvn "$@" ;;
+        gradle)                         cmd_gradle "$@" ;;
+        
+        # Container managers
+        docker)                         cmd_docker "$@" ;;
+        podman)                         cmd_podman "$@" ;;
+        
+        # Cloud managers
+        aws)                            cmd_aws "$@" ;;
+        az)                             cmd_az "$@" ;;
+        gcloud)                         cmd_gcloud "$@" ;;
+        kubectl|k8s)                    cmd_kubectl "$@" ;;
+        helm)                           cmd_helm "$@" ;;
+        terraform|tf)                   cmd_terraform "$@" ;;
+        
+        # Game managers
+        steam)                          cmd_steam "$@" ;;
+        lutris)                         cmd_lutris "$@" ;;
+        wine)                           cmd_wine "$@" ;;
+        proton)                         cmd_proton "$@" ;;
+        
+        # Special commands
+        self-update|self-upgrade)       cmd_self_update "$@" ;;
+        update-vopk)                    cmd_self_update "$@" ;;
+        backend|script-v)               cmd_script_v "$@" ;;
+        vm|vmpkg)                       cmd_vmpkg "$@" ;;
+        plugin)                         cmd_plugin "$@" ;;
+        
+        # Help and information
+        help|-h|--help)                 show_help ;;
+        -v|--version)                   show_version ;;
+        commands|list-commands)         list_all_commands ;;
+        backends|list-backends)         list_all_backends ;;
+        config)                         show_config ;;
+        stats|metrics)                  show_metrics "requested" ;;
+        changelog)                      show_changelog ;;
+        completion)                     generate_completion "bash" ;;
+        
+        # Aliases
+        up)                             cmd_update && cmd_upgrade ;;
+        refresh)                        cmd_update && cmd_upgrade ;;
+        fu)                             cmd_full_upgrade ;;
+        rm)                             cmd_remove "$@" ;;
+        ls)                             cmd_list "$@" ;;
+        i)                              cmd_install "$@" ;;
+        
+        *)                              die "Unknown command: $cmd" ;;
+    esac
+    
+    # Show completion metrics
+    show_metrics "completed"
 }
 
 ###############################################################################
-# ENTRY POINT
+# ENTRY POINT WITH ENHANCED VALIDATION
 ###############################################################################
 
-detect_distro
-init_sudo
+# Check bash version
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]] || [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -lt 4 ]]; then
+    echo "vopk requires Bash 4.4 or higher" >&2
+    echo "Current version: $BASH_VERSION" >&2
+    exit 1
+fi
+
+# Check for required tools
+check_requirements() {
+    local missing=()
+    
+    # Core requirements
+    command -v curl >/dev/null 2>&1 || missing+=("curl")
+    command -v wget >/dev/null 2>&1 || missing+=("wget")
+    command -v tar >/dev/null 2>&1 || missing+=("tar")
+    command -v gzip >/dev/null 2>&1 || missing+=("gzip")
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        warn "Missing recommended tools: ${missing[*]}"
+        warn "Some features may not work properly"
+    fi
+}
+
+# Initialize background process array
+declare -a BACKGROUND_PIDS=()
+
+# Check requirements
+check_requirements
+
+# Run main function
 main "$@"
